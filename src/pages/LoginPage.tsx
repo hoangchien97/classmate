@@ -4,7 +4,7 @@ import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
 } from "firebase/auth";
-import { auth } from "@/firebase/firebase.ts";
+import { auth } from "@/firebase/firebase";
 
 function LoginPage() {
   const [email, setEmail] = useState("");
@@ -14,22 +14,54 @@ function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
+
+    // Validate cơ bản
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Email không hợp lệ.");
+      return;
+    }
+    if (password.length < 6) {
+      setError("Mật khẩu phải có ít nhất 6 ký tự.");
+      return;
+    }
+
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      const user = userCredential.user;
+
+      if (!user.emailVerified) {
+        setError("Vui lòng xác nhận email trước khi đăng nhập.");
+        await auth.signOut();
+        return;
+      }
+
       navigate("/checkin");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
-      setError(err.message);
+      if (err.code === "auth/invalid-credential") {
+        setError("Email hoặc mật khẩu không đúng. Vui lòng kiểm tra lại.");
+      } else if (err.code === "auth/user-disabled") {
+        setError("Tài khoản đã bị vô hiệu hóa. Liên hệ quản trị viên.");
+      } else {
+        setError("Lỗi đăng nhập: " + err.message);
+      }
     }
   };
 
   const handleResetPassword = async () => {
+    if (!email) {
+      setError("Vui lòng nhập email để khôi phục mật khẩu.");
+      return;
+    }
     try {
       await sendPasswordResetEmail(auth, email);
       alert("Email khôi phục mật khẩu đã được gửi!");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
-      setError(err.message);
+      setError("Lỗi gửi email khôi phục: " + err.message);
     }
   };
 

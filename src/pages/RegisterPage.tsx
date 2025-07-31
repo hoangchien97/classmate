@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import {
   createUserWithEmailAndPassword,
   fetchSignInMethodsForEmail,
+  sendEmailVerification,
+  signOut,
 } from "firebase/auth";
 import {
   doc,
@@ -22,6 +24,7 @@ function RegisterPage() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [role, setRole] = useState("student");
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const navigate = useNavigate();
 
   const checkEmailExists = async (email: string) => {
@@ -49,6 +52,8 @@ function RegisterPage() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSuccessMessage("");
+
     try {
       // Kiểm tra email trùng
       if (await checkEmailExists(email)) {
@@ -76,9 +81,10 @@ function RegisterPage() {
       );
       const user = userCredential.user;
 
-      console.log("User UID:", user.uid); // Debug
+      // Gửi email xác nhận
+      await sendEmailVerification(user);
 
-      // Lưu thông tin vào Firestore
+      // Lưu thông tin vào Firestore trước khi đăng xuất
       await setDoc(doc(db, "users", user.uid), {
         userId: user.uid,
         email: user.email,
@@ -90,7 +96,13 @@ function RegisterPage() {
         providers: ["email"],
       });
 
-      navigate("/login");
+      // Đăng xuất sau khi lưu document
+      await signOut(auth);
+
+      setSuccessMessage(
+        "Đăng ký thành công! Vui lòng kiểm tra email để xác nhận tài khoản."
+      );
+      setTimeout(() => navigate("/login"), 3000); // Chuyển hướng sau 3 giây
     } catch (err: any) {
       setError(err.message);
     }
@@ -100,6 +112,9 @@ function RegisterPage() {
     <div>
       <h2 className="text-2xl font-bold text-center text-blue-500">Đăng ký</h2>
       {error && <p className="mt-4 text-red-500">{error}</p>}
+      {successMessage && (
+        <p className="mt-4 text-green-500">{successMessage}</p>
+      )}
       <form onSubmit={handleRegister} className="mt-6 space-y-4">
         <div>
           <label

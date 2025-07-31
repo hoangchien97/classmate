@@ -1,7 +1,7 @@
 import { useEffect, useState, type JSX } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/firebase/firebase.ts";
+import { auth } from "@/firebase/firebase";
 
 interface ProtectedRouteProps {
   children: JSX.Element;
@@ -11,12 +11,14 @@ interface ProtectedRouteProps {
 function ProtectedRoute({ children, requireAuth }: ProtectedRouteProps) {
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setIsAuthenticated(!!user);
+      setIsEmailVerified(user ? user.emailVerified : false);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -30,12 +32,12 @@ function ProtectedRoute({ children, requireAuth }: ProtectedRouteProps) {
     );
   }
 
-  if (requireAuth && !isAuthenticated) {
+  if (requireAuth && (!isAuthenticated || !isEmailVerified)) {
     navigate("/login", { state: { from: location.pathname } });
     return null;
   }
 
-  if (!requireAuth && isAuthenticated) {
+  if (!requireAuth && isAuthenticated && isEmailVerified) {
     navigate("/checkin");
     return null;
   }
