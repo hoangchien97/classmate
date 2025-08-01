@@ -31,6 +31,7 @@ function SchedulePage() {
     description: "",
     classId: "",
     isEditing: false,
+    recurrence: "none",
   });
   const [error, setError] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -43,13 +44,14 @@ function SchedulePage() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUserId(user.uid);
+        // Lấy vai trò người dùng
         const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setUserRole(userData.role);
-          await fetchUserSchedules(user.uid, userData.role);
-          await fetchUserClasses(user.uid, userData.role);
-        }
+        const role = userDoc.exists() ? userDoc.data().role : "student";
+        setUserRole(role);
+
+        // Lấy các lớp học và lịch học
+        await fetchUserClasses(user.uid, role);
+        await fetchUserSchedules(user.uid, role);
       } else {
         navigate("/login");
       }
@@ -62,19 +64,22 @@ function SchedulePage() {
     try {
       const classesRef = collection(db, "classes");
       let classesQuery;
-      
+
       if (role === "teacher") {
         classesQuery = query(classesRef, where("teacherId", "==", uid));
       } else {
-        classesQuery = query(classesRef, where("studentIds", "array-contains", uid));
+        classesQuery = query(
+          classesRef,
+          where("studentIds", "array-contains", uid)
+        );
       }
-      
+
       const querySnapshot = await getDocs(classesQuery);
-      const classesData = querySnapshot.docs.map((doc) => ({ 
-        id: doc.id, 
-        ...doc.data() 
+      const classesData = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
       }));
-      
+
       setUserClasses(classesData);
     } catch (err: any) {
       setError("Lỗi khi tải thông tin lớp học: " + err.message);
@@ -86,29 +91,26 @@ function SchedulePage() {
     try {
       const schedulesRef = collection(db, "schedules");
       let schedulesQuery;
-      
+
       if (role === "teacher") {
         schedulesQuery = query(schedulesRef, where("teacherId", "==", uid));
       } else {
         // Đối với học sinh, chúng ta cần lấy lịch của các lớp mà học sinh đã tham gia
         const classesQuery = query(
-          collection(db, "classes"), 
+          collection(db, "classes"),
           where("studentIds", "array-contains", uid)
         );
         const classesSnapshot = await getDocs(classesQuery);
-        const classIds = classesSnapshot.docs.map(doc => doc.id);
-        
+        const classIds = classesSnapshot.docs.map((doc) => doc.id);
+
         if (classIds.length === 0) {
           setEvents([]);
           return;
         }
-        
-        schedulesQuery = query(
-          schedulesRef,
-          where("classId", "in", classIds)
-        );
+
+        schedulesQuery = query(schedulesRef, where("classId", "in", classIds));
       }
-      
+
       const querySnapshot = await getDocs(schedulesQuery);
       const schedulesData = querySnapshot.docs.map((doc) => {
         const data = doc.data();
@@ -125,7 +127,7 @@ function SchedulePage() {
           borderColor: role === "teacher" ? "#4338CA" : "#059669",
         };
       });
-      
+
       setEvents(schedulesData);
     } catch (err: any) {
       setError("Lỗi khi tải lịch học: " + err.message);
@@ -133,9 +135,9 @@ function SchedulePage() {
   };
 
   // Xử lý khi người dùng mở modal để thêm/chỉnh sửa sự kiện
+  // Sửa lại hàm handleOpenModal để luôn có trường recurrence
   const handleOpenModal = (date?: Date | null, event?: any) => {
     if (event) {
-      // Chỉnh sửa sự kiện đã tồn tại
       setSelectedEvent(event);
       setNewEvent({
         title: event.title,
@@ -145,13 +147,12 @@ function SchedulePage() {
         description: event.description || "",
         classId: event.classId || "",
         isEditing: true,
+        recurrence: event.recurrence || "none",
       });
     } else if (date) {
-      // Thêm sự kiện mới với ngày đã chọn
       const startDate = new Date(date);
       const endDate = new Date(date);
       endDate.setHours(endDate.getHours() + 1);
-      
       setNewEvent({
         title: "",
         start: formatDateForInput(startDate),
@@ -160,14 +161,13 @@ function SchedulePage() {
         description: "",
         classId: "",
         isEditing: false,
+        recurrence: "none",
       });
       setSelectedEvent(null);
     } else {
-      // Thêm sự kiện mới với ngày hiện tại
       const now = new Date();
       const endTime = new Date();
       endTime.setHours(endTime.getHours() + 1);
-      
       setNewEvent({
         title: "",
         start: formatDateForInput(now),
@@ -176,10 +176,10 @@ function SchedulePage() {
         description: "",
         classId: "",
         isEditing: false,
+        recurrence: "none",
       });
       setSelectedEvent(null);
     }
-    
     setShowModal(true);
   };
 
@@ -204,6 +204,7 @@ function SchedulePage() {
           end: new Date(newEvent.end),
           location: newEvent.location,
           description: newEvent.description,
+          recurrence: newEvent.recurrence || "none",
           updatedAt: new Date(),
         });
 
@@ -218,6 +219,7 @@ function SchedulePage() {
                   end: new Date(newEvent.end),
                   location: newEvent.location,
                   description: newEvent.description,
+                  recurrence: newEvent.recurrence || "none",
                 }
               : event
           )
@@ -225,7 +227,7 @@ function SchedulePage() {
       } else {
         // Tạo sự kiện mới
         let classId = newEvent.classId;
-        
+
         if (!classId) {
           // Tạo lớp học mới nếu cần
           classId = `class_${Date.now()}`;
@@ -249,11 +251,11 @@ function SchedulePage() {
           start: new Date(newEvent.start),
           end: new Date(newEvent.end),
           location: newEvent.location || "",
-          description: newEvent.description || "",
+          description: newEvent.description,
+          recurrence: newEvent.recurrence || "none",
           createdAt: new Date(),
         });
 
-        // Cập nhật UI
         setEvents([
           ...events,
           {
@@ -267,10 +269,11 @@ function SchedulePage() {
             description: newEvent.description,
             backgroundColor: "#4F46E5",
             borderColor: "#4338CA",
+            recurrence: newEvent.recurrence || "none",
           },
         ]);
       }
-      
+
       // Reset form và đóng modal
       setNewEvent({
         title: "",
@@ -280,6 +283,7 @@ function SchedulePage() {
         description: "",
         classId: "",
         isEditing: false,
+        recurrence: "none",
       });
       setSelectedEvent(null);
       setShowModal(false);
@@ -304,8 +308,12 @@ function SchedulePage() {
   return (
     <div className="space-y-6 p-4">
       <h2 className="text-2xl font-bold text-center text-blue-500">Lịch học</h2>
-      {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 mb-4 rounded">{error}</div>}
-      
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 mb-4 rounded">
+          {error}
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow p-4">
         <div className="mb-4 flex justify-between items-center">
           <div className="flex items-center space-x-4">
@@ -318,7 +326,7 @@ function SchedulePage() {
               <span className="text-sm text-gray-600">Lớp học tham gia</span>
             </div>
           </div>
-          
+
           {userRole === "teacher" && (
             <button
               onClick={() => handleOpenModal()}
@@ -328,7 +336,7 @@ function SchedulePage() {
             </button>
           )}
         </div>
-        
+
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -365,14 +373,16 @@ function SchedulePage() {
           eventTimeFormat={{
             hour: "2-digit",
             minute: "2-digit",
-            hour12: false
+            hour12: false,
           }}
           eventContent={(eventInfo) => {
             return (
               <div className="p-1">
                 <div className="font-bold">{eventInfo.event.title}</div>
                 {eventInfo.event.extendedProps.location && (
-                  <div className="text-xs mt-1">Địa điểm: {eventInfo.event.extendedProps.location}</div>
+                  <div className="text-xs mt-1">
+                    Địa điểm: {eventInfo.event.extendedProps.location}
+                  </div>
                 )}
                 <div className="text-xs">{eventInfo.timeText}</div>
               </div>
@@ -388,7 +398,9 @@ function SchedulePage() {
             <div className="px-6 py-4 border-b">
               <div className="flex justify-between items-center">
                 <h3 className="text-xl font-semibold text-gray-900">
-                  {newEvent.isEditing ? "Chỉnh sửa lịch học" : "Thêm lịch học mới"}
+                  {newEvent.isEditing
+                    ? "Chỉnh sửa lịch học"
+                    : "Thêm lịch học mới"}
                 </h3>
                 <button
                   onClick={() => setShowModal(false)}
@@ -398,86 +410,116 @@ function SchedulePage() {
                 </button>
               </div>
             </div>
-            
+
             <div className="px-6 py-4 space-y-4">
               <div>
-                <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="title"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Tiêu đề
                 </label>
                 <input
                   id="title"
                   type="text"
                   value={newEvent.title}
-                  onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                  onChange={(e) =>
+                    setNewEvent({ ...newEvent, title: e.target.value })
+                  }
                   className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Nhập tiêu đề lịch học"
                 />
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="start" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="start"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Bắt đầu
                   </label>
                   <input
                     id="start"
                     type="datetime-local"
                     value={newEvent.start}
-                    onChange={(e) => setNewEvent({ ...newEvent, start: e.target.value })}
+                    onChange={(e) =>
+                      setNewEvent({ ...newEvent, start: e.target.value })
+                    }
                     className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label htmlFor="end" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="end"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Kết thúc
                   </label>
                   <input
                     id="end"
                     type="datetime-local"
                     value={newEvent.end}
-                    onChange={(e) => setNewEvent({ ...newEvent, end: e.target.value })}
+                    onChange={(e) =>
+                      setNewEvent({ ...newEvent, end: e.target.value })
+                    }
                     className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
-              
+
               <div>
-                <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="location"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Địa điểm
                 </label>
                 <input
                   id="location"
                   type="text"
                   value={newEvent.location}
-                  onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })}
+                  onChange={(e) =>
+                    setNewEvent({ ...newEvent, location: e.target.value })
+                  }
                   className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="VD: Phòng 101"
                 />
               </div>
-              
+
               <div>
-                <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="description"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Mô tả
                 </label>
                 <textarea
                   id="description"
                   value={newEvent.description}
-                  onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+                  onChange={(e) =>
+                    setNewEvent({ ...newEvent, description: e.target.value })
+                  }
                   className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={3}
                   placeholder="Nhập mô tả chi tiết"
                 ></textarea>
               </div>
-              
+
               {userRole === "teacher" && userClasses.length > 0 && (
                 <div>
-                  <label htmlFor="classId" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="classId"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Liên kết với lớp học
                   </label>
                   <select
                     id="classId"
                     value={newEvent.classId}
-                    onChange={(e) => setNewEvent({ ...newEvent, classId: e.target.value })}
+                    onChange={(e) =>
+                      setNewEvent({ ...newEvent, classId: e.target.value })
+                    }
                     className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">-- Tạo lớp học mới --</option>
@@ -490,7 +532,7 @@ function SchedulePage() {
                 </div>
               )}
             </div>
-            
+
             <div className="px-6 py-4 border-t flex justify-end space-x-4">
               {newEvent.isEditing && userRole === "teacher" && (
                 <button

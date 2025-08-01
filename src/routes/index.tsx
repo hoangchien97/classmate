@@ -8,6 +8,7 @@ import CheckinPage from "@/pages/CheckinPage";
 import ProfilePage from "@/pages/ProfilePage";
 import SchedulePage from "@/pages/SchedulePage";
 import ClassesPage from "@/pages/ClassesPage";
+import ClassDetailPage from "@/pages/ClassDetailPage"; // Add this import
 
 function Routes() {
   return useRoutes([
@@ -30,6 +31,7 @@ function Routes() {
       ),
       children: [
         { path: "classes", element: <ClassesPage /> },
+        { path: "classes/:classId", element: <ClassDetailPage /> }, // Add this route
         { path: "checkin/:classId", element: <CheckinPage /> },
         { path: "schedule", element: <SchedulePage /> },
         { path: "profile", element: <ProfilePage /> },
