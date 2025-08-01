@@ -73,6 +73,13 @@ function RegisterPage() {
         }
       }
 
+      if (password.length < 6) {
+        throw new Error("Mật khẩu phải có ít nhất 6 ký tự.");
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new Error("Email không hợp lệ.");
+      }
+
       // Tạo tài khoản Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(
         auth,

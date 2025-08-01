@@ -40,7 +40,7 @@ function LoginPage() {
         return;
       }
 
-      navigate("/checkin");
+      navigate("/classes"); // Thay đổi từ /checkin sang /classes
     } catch (err: any) {
       if (err.code === "auth/invalid-credential") {
         setError("Email hoặc mật khẩu không đúng. Vui lòng kiểm tra lại.");

@@ -24,22 +24,29 @@ function ProtectedRoute({ children, requireAuth }: ProtectedRouteProps) {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!loading) {
+      if (requireAuth && (!isAuthenticated || !isEmailVerified)) {
+        navigate("/login", { state: { from: location.pathname } });
+      } else if (!requireAuth && isAuthenticated && isEmailVerified) {
+        navigate("/classes"); // Thay đổi từ /checkin sang /classes
+      }
+    }
+  }, [
+    loading,
+    isAuthenticated,
+    isEmailVerified,
+    requireAuth,
+    navigate,
+    location.pathname,
+  ]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         Đang tải...
       </div>
     );
-  }
-
-  if (requireAuth && (!isAuthenticated || !isEmailVerified)) {
-    navigate("/login", { state: { from: location.pathname } });
-    return null;
-  }
-
-  if (!requireAuth && isAuthenticated && isEmailVerified) {
-    navigate("/checkin");
-    return null;
   }
 
   return children;
