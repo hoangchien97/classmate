@@ -1,0 +1,30 @@
+.rbc-calendar {
+  min-height: 600px;
+}
+.rbc-event {
+  border-radius: 4px;
+  padding: 4px;
+  font-size: 14px;
+}
+.rbc-event.teacher {
+  background-color: #4f46e5;
+  border-color: #4338ca;
+}
+.rbc-event.student {
+  background-color: #10b981;
+  border-color: #059669;
+}
+.rbc-today {
+  background-color: #f0f9ff;
+}
+.rbc-toolbar {
+  margin-bottom: 16px;
+}
+.rbc-btn-group button {
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: 1px solid #d1d5db;
+}
+.rbc-btn-group button:hover {
+  background-color: #e5e7eb;
+}

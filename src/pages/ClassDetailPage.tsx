@@ -27,6 +27,7 @@ import {
   Tag,
   Space,
   Popconfirm,
+  List,
 } from "antd";
 import {
   UserOutlined,
@@ -63,12 +64,11 @@ function ClassDetailPage() {
         if (userDoc.exists()) {
           const userData = userDoc.data();
           setUserRole(userData.role);
-
-          // Fetch class data
           if (classId) {
             await fetchClassData(classId);
-            // Luôn fetch all students để giáo viên có thể thêm/xóa thành viên
-            await fetchAllStudents();
+            if (userData.role === "teacher") {
+              await fetchAllStudents();
+            }
           }
         } else {
           message.error("Không tìm thấy thông tin người dùng");
@@ -83,7 +83,6 @@ function ClassDetailPage() {
     return () => unsubscribe();
   }, [classId, navigate]);
 
-  // Check if checkin is available for current class
   useEffect(() => {
     if (!classData || !classData.schedule || classData.schedule.length === 0) {
       setCanCheckin(false);
@@ -92,9 +91,7 @@ function ClassDetailPage() {
 
     const checkSchedule = () => {
       const now = new Date();
-      const today = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-
-      // Find if there's a session today
+      const today = now.getDay();
       const todaySession = classData.schedule.find(
         (s: any) => s.dayOfWeek === today
       );
@@ -103,19 +100,14 @@ function ClassDetailPage() {
         return;
       }
 
-      // Check if current time is within 30 minutes of start time
       const [hours, minutes] = todaySession.startTime.split(":").map(Number);
       const sessionStart = new Date(now);
       sessionStart.setHours(hours, minutes, 0, 0);
-
       const diffMinutes = (now.getTime() - sessionStart.getTime()) / 60000;
       setCanCheckin(diffMinutes >= -15 && diffMinutes <= 30);
     };
 
-    // Run the check now
     checkSchedule();
-
-    // Set an interval to check every minute
     const interval = setInterval(checkSchedule, 60000);
     return () => clearInterval(interval);
   }, [classData]);
@@ -126,15 +118,11 @@ function ClassDetailPage() {
       if (classDoc.exists()) {
         const data = { id: classDoc.id, ...classDoc.data() };
         setClassData(data);
-
-        // Luôn fetch danh sách học sinh trong lớp
         if (Array.isArray(data.studentIds) && data.studentIds.length > 0) {
           await fetchStudentDetails(data.studentIds);
         } else {
           setStudents([]);
         }
-
-        // Get checked-in students
         if (data.checkins) {
           setCheckedStudents(data.checkins.map((c: any) => c.studentId));
         }
@@ -155,15 +143,10 @@ function ClassDetailPage() {
           if (studentDoc.exists()) {
             return { id, ...studentDoc.data() };
           }
-          return null; // Skip invalid student IDs
+          return null;
         })
       );
-      // Filter out null values and update state
-      setStudents(
-        studentsData.filter(
-          (student): student is NonNullable<typeof student> => student !== null
-        )
-      );
+      setStudents(studentsData.filter((student): student is NonNullable<typeof student> => student !== null));
     } catch (error: any) {
       message.error(`Lỗi khi tải thông tin học sinh: ${error.message}`);
       setStudents([]);
@@ -174,35 +157,23 @@ function ClassDetailPage() {
     try {
       const q = query(collection(db, "users"), where("role", "==", "student"));
       const querySnapshot = await getDocs(q);
-      debugger;
       const studentsData = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
-      debugger;
-
       setAllStudents(studentsData);
     } catch (error: any) {
       message.error(`Lỗi khi tải danh sách học sinh: ${error.message}`);
     }
   };
 
-  const handleUpdateClass = async (classData: {
-    name: string;
-    description: string;
-  }) => {
+  const handleUpdateClass = async (classData: { name: string; description: string }) => {
     try {
       await updateDoc(doc(db, "classes", classId!), {
         name: classData.name,
         description: classData.description || "",
       });
-
-      setClassData({
-        ...classData,
-        name: classData.name,
-        description: classData.description || "",
-      });
-
+      setClassData({ ...classData, name: classData.name, description: classData.description || "" });
       setShowEditModal(false);
       toast.success("Cập nhật lớp học thành công!");
     } catch (error: any) {
@@ -224,15 +195,17 @@ function ClassDetailPage() {
     try {
       await updateDoc(doc(db, "classes", classId!), {
         studentIds: arrayUnion(studentId),
+        joinRequests: arrayRemove(
+          classData.joinRequests.find((req: any) => req.studentId === studentId)
+        ),
       });
-
-      // Update local state
       const student = allStudents.find((s) => s.id === studentId);
       if (student) {
         setStudents([...students, student]);
         setClassData({
           ...classData,
           studentIds: [...(classData.studentIds || []), studentId],
+          joinRequests: classData.joinRequests.filter((req: any) => req.studentId !== studentId),
         });
         toast.success("Đã thêm học sinh vào lớp!");
       }
@@ -246,14 +219,10 @@ function ClassDetailPage() {
       await updateDoc(doc(db, "classes", classId!), {
         studentIds: arrayRemove(studentId),
       });
-
-      // Update local state
       setStudents(students.filter((s) => s.id !== studentId));
       setClassData({
         ...classData,
-        studentIds: classData.studentIds.filter(
-          (id: string) => id !== studentId
-        ),
+        studentIds: classData.studentIds.filter((id: string) => id !== studentId),
       });
       toast.success("Đã xóa học sinh khỏi lớp!");
     } catch (error: any) {
@@ -343,6 +312,31 @@ function ClassDetailPage() {
     }
   };
 
+  const handleAcceptJoinRequest = async (studentId: string) => {
+    try {
+      await handleAddStudent(studentId);
+    } catch (error: any) {
+      toast.error(`Lỗi khi chấp nhận yêu cầu: ${error.message}`);
+    }
+  };
+
+  const handleRejectJoinRequest = async (studentId: string) => {
+    try {
+      await updateDoc(doc(db, "classes", classId!), {
+        joinRequests: arrayRemove(
+          classData.joinRequests.find((req: any) => req.studentId === studentId)
+        ),
+      });
+      setClassData({
+        ...classData,
+        joinRequests: classData.joinRequests.filter((req: any) => req.studentId !== studentId),
+      });
+      toast.success("Đã từ chối yêu cầu tham gia!");
+    } catch (error: any) {
+      toast.error(`Lỗi khi từ chối yêu cầu: ${error.message}`);
+    }
+  };
+
   if (loading) {
     return <Spin tip="Đang tải..." className="flex justify-center mt-20" />;
   }
@@ -365,8 +359,6 @@ function ClassDetailPage() {
   return (
     <div className="container mx-auto p-4">
       <ToastContainer />
-
-      {/* Header with back button */}
       <div className="flex items-center mb-6">
         <Button
           icon={<ArrowLeftOutlined />}
@@ -377,11 +369,8 @@ function ClassDetailPage() {
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold">{classData.name}</h1>
-          <p className="text-gray-500">
-            {classData.description || "Không có mô tả"}
-          </p>
+          <p className="text-gray-500">{classData.description || "Không có mô tả"}</p>
         </div>
-
         {userRole === "teacher" && classData.teacherId === userId && (
           <Space>
             <Button
@@ -403,18 +392,15 @@ function ClassDetailPage() {
             </Popconfirm>
           </Space>
         )}
-
-        {userRole === "student" &&
-          canCheckin &&
-          !checkedStudents.includes(userId) && (
-            <Button
-              type="primary"
-              icon={<CheckCircleOutlined />}
-              onClick={handleSelfCheckin}
-            >
-              Điểm danh
-            </Button>
-          )}
+        {userRole === "student" && canCheckin && !checkedStudents.includes(userId) && (
+          <Button
+            type="primary"
+            icon={<CheckCircleOutlined />}
+            onClick={handleSelfCheckin}
+          >
+            Điểm danh
+          </Button>
+        )}
       </div>
 
       <Card className="mb-6">
@@ -433,23 +419,13 @@ function ClassDetailPage() {
             key="info"
           >
             <Descriptions bordered column={1} className="mt-4">
-              <Descriptions.Item label="Tên lớp học">
-                {classData.name}
-              </Descriptions.Item>
-              <Descriptions.Item label="Mô tả">
-                {classData.description || "Không có mô tả"}
-              </Descriptions.Item>
-              <Descriptions.Item label="Số lượng học sinh">
-                {classData.studentIds?.length || 0}
-              </Descriptions.Item>
-              <Descriptions.Item label="Số buổi học">
-                {classData.schedule?.length || 0}
-              </Descriptions.Item>
+              <Descriptions.Item label="Tên lớp học">{classData.name}</Descriptions.Item>
+              <Descriptions.Item label="Mô tả">{classData.description || "Không có mô tả"}</Descriptions.Item>
+              <Descriptions.Item label="Số lượng học sinh">{classData.studentIds?.length || 0}</Descriptions.Item>
+              <Descriptions.Item label="Số buổi học">{classData.schedule?.length || 0}</Descriptions.Item>
               <Descriptions.Item label="Ngày tạo">
                 {classData.createdAt
-                  ? new Date(
-                      classData.createdAt.seconds * 1000
-                    ).toLocaleDateString()
+                  ? new Date(classData.createdAt.seconds * 1000).toLocaleDateString()
                   : "N/A"}
               </Descriptions.Item>
             </Descriptions>
@@ -489,13 +465,10 @@ function ClassDetailPage() {
                   </select>
                 </div>
                 {allStudents.length === 0 && (
-                  <p className="text-gray-500 mt-2">
-                    Không tìm thấy học sinh nào để thêm
-                  </p>
+                  <p className="text-gray-500 mt-2">Không tìm thấy học sinh nào để thêm</p>
                 )}
               </div>
             )}
-
             {students.length > 0 ? (
               <Table
                 dataSource={students}
@@ -518,15 +491,9 @@ function ClassDetailPage() {
                     key: "status",
                     render: (_, record) => (
                       <Tag
-                        color={
-                          checkedStudents.includes(record.id)
-                            ? "green"
-                            : "orange"
-                        }
+                        color={checkedStudents.includes(record.id) ? "green" : "orange"}
                       >
-                        {checkedStudents.includes(record.id)
-                          ? "Đã điểm danh"
-                          : "Chưa điểm danh"}
+                        {checkedStudents.includes(record.id) ? "Đã điểm danh" : "Chưa điểm danh"}
                       </Tag>
                     ),
                   },
@@ -537,16 +504,15 @@ function ClassDetailPage() {
                           key: "action",
                           render: (_, record) => (
                             <Space>
-                              {!checkedStudents.includes(record.id) &&
-                                canCheckin && (
-                                  <Button
-                                    type="primary"
-                                    size="small"
-                                    onClick={() => handleCheckin(record.id)}
-                                  >
-                                    Điểm danh
-                                  </Button>
-                                )}
+                              {!checkedStudents.includes(record.id) && canCheckin && (
+                                <Button
+                                  type="primary"
+                                  size="small"
+                                  onClick={() => handleCheckin(record.id)}
+                                >
+                                  Điểm danh
+                                </Button>
+                              )}
                               <Button
                                 danger
                                 size="small"
@@ -563,9 +529,7 @@ function ClassDetailPage() {
               />
             ) : (
               <div className="text-center py-8">
-                <p className="text-gray-500 mb-4">
-                  Chưa có học sinh nào trong lớp này
-                </p>
+                <p className="text-gray-500 mb-4">Chưa có học sinh nào trong lớp này</p>
               </div>
             )}
           </TabPane>
@@ -589,15 +553,7 @@ function ClassDetailPage() {
                     title: "Thứ",
                     key: "dayOfWeek",
                     render: (_, record) => {
-                      const days = [
-                        "Chủ nhật",
-                        "Thứ hai",
-                        "Thứ ba",
-                        "Thứ tư",
-                        "Thứ năm",
-                        "Thứ sáu",
-                        "Thứ bảy",
-                      ];
+                      const days = ["Chủ nhật", "Thứ hai", "Thứ ba", "Thứ tư", "Thứ năm", "Thứ sáu", "Thứ bảy"];
                       return days[record.dayOfWeek];
                     },
                   },
@@ -624,18 +580,61 @@ function ClassDetailPage() {
               </div>
             )}
           </TabPane>
+
+          {userRole === "teacher" && (
+            <TabPane
+              tab={
+                <span>
+                  <UserOutlined />
+                  Yêu cầu tham gia
+                </span>
+              }
+              key="joinRequests"
+            >
+              {classData.joinRequests && classData.joinRequests.length > 0 ? (
+                <List
+                  dataSource={classData.joinRequests}
+                  renderItem={(request: any) => (
+                    <List.Item
+                      actions={[
+                        <Button
+                          type="primary"
+                          size="small"
+                          onClick={() => handleAcceptJoinRequest(request.studentId)}
+                        >
+                          Chấp nhận
+                        </Button>,
+                        <Button
+                          danger
+                          size="small"
+                          onClick={() => handleRejectJoinRequest(request.studentId)}
+                        >
+                          Từ chối
+                        </Button>,
+                      ]}
+                    >
+                      <List.Item.Meta
+                        title={request.studentName || "Không có tên"}
+                        description={`Gửi vào: ${new Date(request.requestedAt.seconds * 1000).toLocaleDateString()}`}
+                      />
+                    </List.Item>
+                  )}
+                />
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 mb-4">Chưa có yêu cầu tham gia nào</p>
+                </div>
+              )}
+            </TabPane>
+          )}
         </Tabs>
       </Card>
 
-      {/* Edit class modal */}
       <ClassFormModal
         visible={showEditModal}
         onClose={() => setShowEditModal(false)}
         onSave={handleUpdateClass}
-        initialValues={{
-          name: classData.name,
-          description: classData.description || "",
-        }}
+        initialValues={{ name: classData.name, description: classData.description || "" }}
         title="Chỉnh sửa lớp học"
       />
     </div>
