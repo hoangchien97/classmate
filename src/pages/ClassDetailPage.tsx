@@ -12,6 +12,8 @@ import {
   query,
   where,
   getDocs,
+  Timestamp,
+  addDoc,
 } from "firebase/firestore";
 import { auth, db } from "@/firebase/firebase";
 import {
@@ -58,7 +60,6 @@ function ClassDetailPage() {
       if (user) {
         setUserId(user.uid);
         const userDoc = await getDoc(doc(db, "users", user.uid));
-
         if (userDoc.exists()) {
           const userData = userDoc.data();
           setUserRole(userData.role);
@@ -66,9 +67,8 @@ function ClassDetailPage() {
           // Fetch class data
           if (classId) {
             await fetchClassData(classId);
-            if (userData.role === "teacher") {
-              await fetchAllStudents();
-            }
+            // Luôn fetch all students để giáo viên có thể thêm/xóa thành viên
+            await fetchAllStudents();
           }
         } else {
           message.error("Không tìm thấy thông tin người dùng");
@@ -80,7 +80,6 @@ function ClassDetailPage() {
       }
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, [classId, navigate]);
 
@@ -124,14 +123,15 @@ function ClassDetailPage() {
   const fetchClassData = async (id: string) => {
     try {
       const classDoc = await getDoc(doc(db, "classes", id));
-
       if (classDoc.exists()) {
         const data = { id: classDoc.id, ...classDoc.data() };
         setClassData(data);
 
-        // If class has students, fetch their data
-        if (data.studentIds && data.studentIds.length > 0) {
+        // Luôn fetch danh sách học sinh trong lớp
+        if (Array.isArray(data.studentIds) && data.studentIds.length > 0) {
           await fetchStudentDetails(data.studentIds);
+        } else {
+          setStudents([]);
         }
 
         // Get checked-in students
@@ -155,12 +155,18 @@ function ClassDetailPage() {
           if (studentDoc.exists()) {
             return { id, ...studentDoc.data() };
           }
-          return { id, name: "Unknown", email: "Unknown" };
+          return null; // Skip invalid student IDs
         })
       );
-      setStudents(studentsData);
+      // Filter out null values and update state
+      setStudents(
+        studentsData.filter(
+          (student): student is NonNullable<typeof student> => student !== null
+        )
+      );
     } catch (error: any) {
       message.error(`Lỗi khi tải thông tin học sinh: ${error.message}`);
+      setStudents([]);
     }
   };
 
@@ -168,11 +174,12 @@ function ClassDetailPage() {
     try {
       const q = query(collection(db, "users"), where("role", "==", "student"));
       const querySnapshot = await getDocs(q);
-
+      debugger;
       const studentsData = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
+      debugger;
 
       setAllStudents(studentsData);
     } catch (error: any) {
@@ -256,15 +263,36 @@ function ClassDetailPage() {
 
   const handleCheckin = async (studentId: string) => {
     try {
-      await updateDoc(doc(db, "classes", classId!), {
-        checkins: arrayUnion({
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const sessionsQuery = query(
+        collection(db, "sessions"),
+        where("classId", "==", classId!),
+        where("date", ">=", Timestamp.fromDate(today))
+      );
+      const querySnapshot = await getDocs(sessionsQuery);
+      let sessionId = querySnapshot.docs[0]?.id;
+
+      if (!sessionId) {
+        const docRef = await addDoc(collection(db, "sessions"), {
+          classId,
+          date: Timestamp.fromDate(today),
+          attendees: [],
+          createdAt: Timestamp.fromDate(today),
+          createdBy: userId,
+        });
+        sessionId = docRef.id;
+      }
+
+      await updateDoc(doc(db, "sessions", sessionId), {
+        attendees: arrayUnion({
           studentId,
-          checkedAt: new Date(),
+          status: "present",
+          time: Timestamp.now(),
           checkedBy: userId,
         }),
       });
 
-      // Update UI
       setCheckedStudents([...checkedStudents, studentId]);
       toast.success("Điểm danh thành công!");
     } catch (error: any) {
@@ -279,10 +307,32 @@ function ClassDetailPage() {
     }
 
     try {
-      await updateDoc(doc(db, "classes", classId!), {
-        checkins: arrayUnion({
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const sessionsQuery = query(
+        collection(db, "sessions"),
+        where("classId", "==", classId!),
+        where("date", ">=", Timestamp.fromDate(today))
+      );
+      const querySnapshot = await getDocs(sessionsQuery);
+      let sessionId = querySnapshot.docs[0]?.id;
+
+      if (!sessionId) {
+        const docRef = await addDoc(collection(db, "sessions"), {
+          classId,
+          date: Timestamp.fromDate(today),
+          attendees: [],
+          createdAt: Timestamp.fromDate(today),
+          createdBy: userId,
+        });
+        sessionId = docRef.id;
+      }
+
+      await updateDoc(doc(db, "sessions", sessionId), {
+        attendees: arrayUnion({
           studentId: userId,
-          checkedAt: new Date(),
+          status: "present",
+          time: Timestamp.now(),
         }),
       });
 
@@ -426,6 +476,7 @@ function ClassDetailPage() {
                         e.target.value = "";
                       }
                     }}
+                    disabled={allStudents.length === 0}
                   >
                     <option value="">-- Chọn học sinh --</option>
                     {allStudents
@@ -437,71 +488,86 @@ function ClassDetailPage() {
                       ))}
                   </select>
                 </div>
+                {allStudents.length === 0 && (
+                  <p className="text-gray-500 mt-2">
+                    Không tìm thấy học sinh nào để thêm
+                  </p>
+                )}
               </div>
             )}
 
-            <Table
-              dataSource={students}
-              rowKey="id"
-              pagination={false}
-              columns={[
-                {
-                  title: "Tên",
-                  dataIndex: "name",
-                  key: "name",
-                  render: (text) => text || "Chưa cập nhật",
-                },
-                {
-                  title: "Email",
-                  dataIndex: "email",
-                  key: "email",
-                },
-                {
-                  title: "Trạng thái",
-                  key: "status",
-                  render: (_, record) => (
-                    <Tag
-                      color={
-                        checkedStudents.includes(record.id) ? "green" : "orange"
-                      }
-                    >
-                      {checkedStudents.includes(record.id)
-                        ? "Đã điểm danh"
-                        : "Chưa điểm danh"}
-                    </Tag>
-                  ),
-                },
-                {
-                  title: "Hành động",
-                  key: "action",
-                  render: (_, record) => (
-                    <Space>
-                      {userRole === "teacher" &&
-                        !checkedStudents.includes(record.id) &&
-                        canCheckin && (
-                          <Button
-                            type="primary"
-                            size="small"
-                            onClick={() => handleCheckin(record.id)}
-                          >
-                            Điểm danh
-                          </Button>
-                        )}
-
-                      {userRole === "teacher" && (
-                        <Button
-                          danger
-                          size="small"
-                          onClick={() => handleRemoveStudent(record.id)}
-                        >
-                          Xóa
-                        </Button>
-                      )}
-                    </Space>
-                  ),
-                },
-              ]}
-            />
+            {students.length > 0 ? (
+              <Table
+                dataSource={students}
+                rowKey="id"
+                pagination={false}
+                columns={[
+                  {
+                    title: "Tên",
+                    dataIndex: "name",
+                    key: "name",
+                    render: (text) => text || "Chưa cập nhật",
+                  },
+                  {
+                    title: "Email",
+                    dataIndex: "email",
+                    key: "email",
+                  },
+                  {
+                    title: "Trạng thái",
+                    key: "status",
+                    render: (_, record) => (
+                      <Tag
+                        color={
+                          checkedStudents.includes(record.id)
+                            ? "green"
+                            : "orange"
+                        }
+                      >
+                        {checkedStudents.includes(record.id)
+                          ? "Đã điểm danh"
+                          : "Chưa điểm danh"}
+                      </Tag>
+                    ),
+                  },
+                  ...(userRole === "teacher"
+                    ? [
+                        {
+                          title: "Hành động",
+                          key: "action",
+                          render: (_, record) => (
+                            <Space>
+                              {!checkedStudents.includes(record.id) &&
+                                canCheckin && (
+                                  <Button
+                                    type="primary"
+                                    size="small"
+                                    onClick={() => handleCheckin(record.id)}
+                                  >
+                                    Điểm danh
+                                  </Button>
+                                )}
+                              <Button
+                                danger
+                                size="small"
+                                onClick={() => handleRemoveStudent(record.id)}
+                              >
+                                Xóa
+                              </Button>
+                            </Space>
+                          ),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-500 mb-4">
+                  Chưa có học sinh nào trong lớp này
+                </p>
+              </div>
+            )}
           </TabPane>
 
           <TabPane

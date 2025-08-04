@@ -308,13 +308,6 @@ function ClassesPage() {
                           : "Chưa có lịch"}
                       </span>
                     </div>,
-                    <div
-                      key="details"
-                      className="flex items-center justify-center text-blue-500"
-                    >
-                      <span>Chi tiết</span>
-                      <RightOutlined className="ml-1" />
-                    </div>,
                   ]}
                 >
                   <div className="h-16 overflow-hidden text-gray-500">
