@@ -540,13 +540,13 @@ const ScheduleEventModal = ({
               style={{ width: "100%" }}
             >
               <div className="grid grid-cols-4 gap-2">
+                <Checkbox value={0}>Chủ nhật</Checkbox>
                 <Checkbox value={1}>Thứ 2</Checkbox>
                 <Checkbox value={2}>Thứ 3</Checkbox>
                 <Checkbox value={3}>Thứ 4</Checkbox>
                 <Checkbox value={4}>Thứ 5</Checkbox>
                 <Checkbox value={5}>Thứ 6</Checkbox>
                 <Checkbox value={6}>Thứ 7</Checkbox>
-                <Checkbox value={0}>Chủ nhật</Checkbox>
               </div>
             </Checkbox.Group>
           </div>
