@@ -17,6 +17,7 @@ import "react-big-calendar/lib/css/react-big-calendar.css";
 import { auth, db } from "@/firebase/firebase";
 import { Button, Alert } from "antd";
 import ScheduleEventModal from "@/components/ScheduleEventModal";
+import { FORMAT_DATE, FORMAT_TIME_12H } from "@/constants";
 import "../styles/calendar.css";
 
 const localizer = momentLocalizer(moment);
@@ -27,25 +28,66 @@ function SchedulePage() {
   const [events, setEvents] = useState<any[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentView, setCurrentView] = useState<View>("month");
-  const [newEvent, setNewEvent] = useState({
-    date: "",
-    startTime: "",
-    endTime: "",
-    title: "",
-    description: "",
-    classId: "",
-    isEditing: false,
-    recurrence: "none",
-    recurrenceEnd: "",
-    parentId: "",
-    weeklyDays: [] as number[],
-    monthlyDay: 1,
-  });
   const [error, setError] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
   const [userClasses, setUserClasses] = useState<any[]>([]);
   const navigate = useNavigate();
+
+  // Function để xác định loại event dựa trên thời gian
+  const getEventType = (eventStart: Date, eventEnd: Date, allEvents: any[]) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const eventDate = new Date(
+      eventStart.getFullYear(),
+      eventStart.getMonth(),
+      eventStart.getDate()
+    );
+
+    // 1. Kiểm tra nếu event là hôm nay
+    if (eventDate.getTime() === today.getTime()) {
+      return "today";
+    }
+
+    // 2. Kiểm tra nếu event đã qua
+    if (eventEnd < now) {
+      return "past";
+    }
+
+    // 3. Kiểm tra nếu event trong tương lai
+    if (eventStart > now) {
+      // Tìm event gần nhất trong tương lai
+      const futureEvents = allEvents
+        .filter((e) => new Date(e.start) > now)
+        .sort(
+          (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
+        );
+
+      // Nếu đây là event gần nhất (hoặc trong top 3 events gần nhất trong ngày)
+      if (futureEvents.length > 0) {
+        const nearestEvent = futureEvents[0];
+        const nearestEventDate = new Date(
+          nearestEvent.start.getFullYear(),
+          nearestEvent.start.getMonth(),
+          nearestEvent.start.getDate()
+        );
+
+        // Nếu event này cùng ngày với event gần nhất hoặc là event gần nhất
+        if (
+          eventDate.getTime() === nearestEventDate.getTime() ||
+          nearestEvent.id === eventStart.getTime() + eventEnd.getTime()
+        ) {
+          return "coming";
+        }
+      }
+
+      return "future";
+    }
+
+    // Default case
+    return "future";
+  };
 
   const fetchUserSchedules = useCallback(
     async (uid: string, role: string) => {
@@ -73,13 +115,16 @@ function SchedulePage() {
         }
 
         const querySnapshot = await getDocs(schedulesQuery);
-        const schedulesData = querySnapshot.docs.map((doc) => {
+
+        // First pass: create basic event data
+        const basicEvents = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           const start = data.start.toDate();
           const end = data.end.toDate();
           const recurrenceEnd = data?.recurrenceEnd
             ? data?.recurrenceEnd?.toDate()
             : null;
+
           return {
             id: doc.id,
             title: data.title,
@@ -93,9 +138,22 @@ function SchedulePage() {
             parentId: data.parentId || doc.id,
             weeklyDays: data.weeklyDays || [],
             monthlyDay: data.monthlyDay || 1,
-            className: userRole === "teacher" ? "teacher" : "student",
           };
         });
+
+        // Second pass: determine event types and add styling
+        const schedulesData = basicEvents.map((event) => {
+          const eventType = getEventType(event.start, event.end, basicEvents);
+          let className = userRole === "teacher" ? "teacher" : "student";
+          className += ` event-${eventType}`;
+
+          return {
+            ...event,
+            className: className,
+            eventType: eventType,
+          };
+        });
+
         setEvents(schedulesData);
       } catch (err: any) {
         setError("Lỗi khi tải lịch học: " + err.message);
@@ -141,66 +199,70 @@ function SchedulePage() {
 
   const handleOpenModal = (event?: any) => {
     if (event && event.start) {
-      // Clicked on an existing event
+      // Clicked on an existing event - edit mode
       setSelectedEvent(event);
-      setNewEvent({
-        date: moment(event.start).format("YYYY-MM-DD"),
-        startTime: moment(event.start).format("HH:mm"),
-        endTime: moment(event.end).format("HH:mm"),
-        title: event.title || "",
-        description: event.description || "",
-        classId: event.classId || "",
-        isEditing: true,
-        recurrence: event.recurrence || "none",
-        recurrenceEnd: event.recurrenceEnd
-          ? moment(event.recurrenceEnd).format("YYYY-MM-DD")
-          : "",
-        parentId: event.parentId || "",
-        weeklyDays: event.weeklyDays || [],
-        monthlyDay: event.monthlyDay || 1,
-      });
-    } else if (event && event.slots) {
-      // Clicked on an empty slot
-      const startDate = event.start || new Date();
-      setNewEvent({
-        date: moment(startDate).format("YYYY-MM-DD"),
-        startTime: moment(startDate).format("HH:mm"),
-        endTime: moment(startDate).add(1, "hour").format("HH:mm"),
-        title: "",
-        description: "",
-        classId: "",
-        isEditing: false,
-        recurrence: "none",
-        recurrenceEnd: "",
-        parentId: "",
-        weeklyDays: [],
-        monthlyDay: 1,
-      });
-      setSelectedEvent(null);
+      setModalMode("edit");
     } else {
-      // Manual trigger (button click)
-      const startDate = new Date();
-      setNewEvent({
-        date: moment(startDate).format("YYYY-MM-DD"),
-        startTime: moment(startDate).format("HH:mm"),
-        endTime: moment(startDate).add(1, "hour").format("HH:mm"),
-        title: "",
-        description: "",
-        classId: "",
-        isEditing: false,
-        recurrence: "none",
-        recurrenceEnd: "",
-        parentId: "",
-        weeklyDays: [],
-        monthlyDay: 1,
-      });
+      // Clicked on empty slot or button - create mode
       setSelectedEvent(null);
+      setModalMode("create");
     }
     setShowModal(true);
   };
 
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setSelectedEvent(null);
+    setModalMode("create");
+  };
+
   const handleRefreshEvents = async () => {
     await fetchUserSchedules(userId, userRole);
+  };
+
+  // Custom event prop getter để set màu sắc
+  const eventStyleGetter = (event: any) => {
+    let backgroundColor = "";
+    let borderColor = "";
+    let textColor = "white";
+
+    switch (event.eventType) {
+      case "today":
+        backgroundColor = "#52c41a"; // Xanh lá đậm - hôm nay
+        borderColor = "#389e0d";
+        break;
+      case "coming":
+        backgroundColor = "#faad14"; // Vàng cam - lịch gần nhất
+        borderColor = "#d48806";
+        break;
+      case "past":
+        backgroundColor = "#bfbfbf"; // Xám - đã qua
+        borderColor = "#8c8c8c";
+        break;
+      case "future":
+        backgroundColor = "#1890ff"; // Xanh dương - tương lai
+        borderColor = "#096dd9";
+        break;
+      default:
+        backgroundColor = userRole === "teacher" ? "#722ed1" : "#13c2c2";
+        borderColor = userRole === "teacher" ? "#531dab" : "#08979c";
+    }
+
+    return {
+      style: {
+        backgroundColor,
+        borderColor,
+        color: textColor,
+        border: `2px solid ${borderColor}`,
+        borderRadius: "4px",
+        fontSize: "12px",
+        fontWeight: "500",
+        boxShadow:
+          event.eventType === "today" || event.eventType === "coming"
+            ? `0 0 10px ${backgroundColor}40`
+            : "none",
+      },
+    };
   };
 
   return (
@@ -216,17 +278,8 @@ function SchedulePage() {
       )}
 
       <div className="bg-white rounded-lg shadow p-4">
-        <div className="mb-4 flex justify-between items-center">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center">
-              <div className="w-3 h-3 rounded-full bg-indigo-600 mr-2"></div>
-              <span className="text-sm text-gray-600">Lịch giảng dạy</span>
-            </div>
-            <div className="flex items-center">
-              <div className="w-3 h-3 rounded-full bg-emerald-500 mr-2"></div>
-              <span className="text-sm text-gray-600">Lớp học tham gia</span>
-            </div>
-          </div>
+        {/* Add button */}
+        <div className="mb-4 flex justify-end">
           {userRole === "teacher" && (
             <Button type="primary" onClick={() => handleOpenModal()}>
               Thêm lịch mới
@@ -235,126 +288,152 @@ function SchedulePage() {
         </div>
 
         <Calendar
-          // Cấu hình localizer để format ngày tháng theo locale
           localizer={localizer}
-          // Dữ liệu events để hiển thị trên calendar
           events={events}
-          // Thuộc tính trong event object để lấy thời gian bắt đầu
           startAccessor="start"
-          // Thuộc tính trong event object để lấy thời gian kết thúc
           endAccessor="end"
-          // Style CSS cho calendar container
           style={{ height: 600 }}
-          // Các view có thể chuyển đổi (Tháng, Tuần, Ngày, Chương trình)
           views={[Views.MONTH, Views.WEEK, Views.DAY, Views.AGENDA]}
-          // View hiện tại đang hiển thị
           view={currentView}
-          // Ngày hiện tại đang focus
           date={currentDate}
-          // Callback khi user chuyển đổi view (month/week/day/agenda)
           onView={(view) => setCurrentView(view)}
-          // Callback khi user navigate (next/previous/today buttons)
           onNavigate={(date) => setCurrentDate(date)}
-          // Cho phép select time slots (chỉ teacher mới được phép)
           selectable={userRole === "teacher"}
-          // Callback khi click vào slot trống để tạo event mới
           onSelectSlot={handleOpenModal}
-          // Callback khi click vào event có sẵn để edit
           onSelectEvent={handleOpenModal}
-          // Hàm để custom style cho từng event
-          eventPropGetter={(event: any) => ({
-            className: event.className,
-          })}
-          // Cấu hình format hiển thị ngày tháng và thời gian
+          eventPropGetter={eventStyleGetter}
           formats={{
-            // Format cho time gutter bên trái (trong week/day view)
             timeGutterFormat: "HH:mm",
-
-            // Format cho range thời gian của event
             eventTimeRangeFormat: ({ start, end }) =>
-              `${moment(start).format("HH:mm")} - ${moment(end).format(
-                "HH:mm"
+              `${moment(start).format(FORMAT_TIME_12H)} - ${moment(end).format(
+                FORMAT_TIME_12H
               )}`,
-
-            // Format cho ngày trong month view
             dayFormat: (date: Date) => moment(date).format("DD/MM"),
-
-            // Format cho tên thứ trong week view
             weekdayFormat: (date: Date) => moment(date).format("dddd"),
-
-            // Format cho header tháng năm
             monthHeaderFormat: (date: Date) => moment(date).format("MMMM YYYY"),
-
-            // Format cho header ngày
-            dayHeaderFormat: (date: Date) =>
-              moment(date).format("dddd DD/MM/YYYY"),
-
-            // Format cho range header trong week view
+            dayHeaderFormat: (date: Date) => moment(date).format(FORMAT_DATE),
             dayRangeHeaderFormat: ({ start, end }) =>
               `${moment(start).format("DD/MM")} - ${moment(end).format(
-                "DD/MM/YYYY"
+                FORMAT_DATE
               )}`,
-
-            // Format cho ngày trong agenda view
-            agendaDateFormat: (date: Date) => moment(date).format("DD/MM/YYYY"),
-
-            // Format cho thời gian trong agenda view
-            agendaTimeFormat: (date: Date) => moment(date).format("HH:mm"),
-
-            // Format cho range thời gian trong agenda view
+            agendaDateFormat: (date: Date) => moment(date).format(FORMAT_DATE),
+            agendaTimeFormat: (date: Date) =>
+              moment(date).format(FORMAT_TIME_12H),
             agendaTimeRangeFormat: ({ start, end }) =>
-              `${moment(start).format("HH:mm")} - ${moment(end).format(
-                "HH:mm"
+              `${moment(start).format(FORMAT_TIME_12H)} - ${moment(end).format(
+                FORMAT_TIME_12H
               )}`,
           }}
-          // Custom text hiển thị trên các nút và label
           messages={{
-            next: "Tiếp theo", // Nút next
-            previous: "Trước đó", // Nút previous
-            today: "Hôm nay", // Nút today
-            month: "Tháng", // Tab month view
-            week: "Tuần", // Tab week view
-            day: "Ngày", // Tab day view
-            agenda: "Chương trình", // Tab agenda view
-            date: "Ngày", // Column header trong agenda
-            time: "Thời gian", // Column header trong agenda
-            event: "Sự kiện", // Column header trong agenda
+            next: "Tiếp theo",
+            previous: "Trước đó",
+            today: "Hôm nay",
+            month: "Tháng",
+            week: "Tuần",
+            day: "Ngày",
+            agenda: "Chương trình",
+            date: "Ngày",
+            time: "Thời gian",
+            event: "Sự kiện",
             noEventsInRange: "Không có sự kiện nào trong khoảng thời gian này.",
             showMore: (total: number) => `+ Xem thêm ${total} sự kiện`,
           }}
-          // Hiển thị popup khi có nhiều events trong 1 ngày
           popup={true}
-          // Khoảng cách thời gian mỗi step (30 phút)
           step={30}
-          // Số timeslots trong 1 giờ (2 = mỗi 30 phút 1 slot)
           timeslots={2}
-          // Thời gian sớm nhất hiển thị (6:00 AM)
           min={new Date(2025, 0, 1, 6, 0, 0)}
-          // Thời gian muộn nhất hiển thị (10:00 PM)
           max={new Date(2025, 0, 1, 22, 0, 0)}
-          // Component custom để hiển thị event trong month view với giờ AM/PM
           components={{
             month: {
               event: ({ event }) => (
                 <div className="rbc-event-content">
-                  <strong>{moment(event.start).format("h:mm A")}</strong>
-                  <br />
-                  {event.title}
+                  <div className="flex items-center">
+                    {(event.eventType === "today" ||
+                      event.eventType === "coming") && (
+                      <div className="w-2 h-2 rounded-full bg-white mr-1 animate-pulse"></div>
+                    )}
+                    <strong className="text-xs">
+                      {moment(event.start).format(FORMAT_TIME_12H)}
+                    </strong>
+                  </div>
+                  <div className="text-xs mt-1 line-clamp-2">{event.title}</div>
+                  {event.eventType === "coming" && (
+                    <div className="text-xs mt-1 opacity-90">📅 Sắp tới</div>
+                  )}
+                </div>
+              ),
+            },
+            week: {
+              event: ({ event }) => (
+                <div className="rbc-event-content p-1">
+                  <div className="flex items-center">
+                    {(event.eventType === "today" ||
+                      event.eventType === "coming") && (
+                      <div className="w-2 h-2 rounded-full bg-white mr-1 animate-pulse"></div>
+                    )}
+                    <span className="text-xs font-medium">{event.title}</span>
+                    {event.eventType === "coming" && (
+                      <span className="ml-1 text-xs">📅</span>
+                    )}
+                  </div>
+                </div>
+              ),
+            },
+            day: {
+              event: ({ event }) => (
+                <div className="rbc-event-content p-2">
+                  <div className="flex items-center mb-1">
+                    {(event.eventType === "today" ||
+                      event.eventType === "coming") && (
+                      <div className="w-2 h-2 rounded-full bg-white mr-2 animate-pulse"></div>
+                    )}
+                    <span className="font-medium">{event.title}</span>
+                    {event.eventType === "coming" && (
+                      <span className="ml-2 text-sm">📅 Sắp tới</span>
+                    )}
+                  </div>
+                  {event.description && (
+                    <div className="text-xs opacity-90 mt-1">
+                      {event.description}
+                    </div>
+                  )}
                 </div>
               ),
             },
           }}
         />
+
+        {/* Status-based colors */}
+        <div className="space-y-2 mt-4 flex items-center justify-center">
+          <div className="flex gap-6">
+            <div className="flex items-center">
+              <div className="w-4 h-4 rounded bg-green-500 mr-2 shadow-lg"></div>
+              <span className="text-sm text-gray-600 font-medium">Hôm nay</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-4 h-4 rounded bg-orange-400 mr-2 shadow-lg"></div>
+              <span className="text-sm text-gray-600 font-medium">
+                Lịch gần nhất
+              </span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-4 h-4 rounded bg-blue-500 mr-2"></div>
+              <span className="text-sm text-gray-600">Tương lai</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-4 h-4 rounded bg-gray-400 mr-2"></div>
+              <span className="text-sm text-gray-600">Đã qua</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <ScheduleEventModal
-        showModal={showModal}
-        setShowModal={setShowModal}
-        newEvent={newEvent}
-        setNewEvent={setNewEvent}
+        open={showModal}
+        onClose={handleCloseModal}
+        mode={modalMode}
         userRole={userRole}
         userClasses={userClasses}
-        setUserClasses={setUserClasses}
         selectedEvent={selectedEvent}
         onRefreshEvents={handleRefreshEvents}
       />

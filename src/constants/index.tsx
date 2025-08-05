@@ -1,6 +1,7 @@
 export const FORMAT_DATE = "DD/MM/YYYY";
 export const FORMAT_DATE_INPUT = "YYYY-MM-DD"; // For HTML date input
 export const FORMAT_TIME = "HH:mm";
+export const FORMAT_TIME_12H = "h:mm A"; // For 12-hour format with AM/PM
 export const FORMAT_DATETIME = "DD/MM/YYYY HH:mm";
 
 export const TOAST_MESSAGES = {
