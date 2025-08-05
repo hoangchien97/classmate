@@ -1,6 +1,16 @@
-import { Input, Select, Alert, Checkbox, Button, Modal } from "antd";
+import {
+  Input,
+  Select,
+  Alert,
+  Checkbox,
+  Button,
+  Modal,
+  Form,
+  DatePicker,
+  TimePicker,
+} from "antd";
 import moment from "moment";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   doc,
   getDoc,
@@ -13,6 +23,8 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { auth, db } from "@/firebase/firebase";
+import { FORMAT_DATE, FORMAT_TIME } from "@/constants";
+import { DayOfWeek, RecurrenceType } from "@/assets/enums";
 
 const { Option } = Select;
 
@@ -35,21 +47,87 @@ const ScheduleEventModal = ({
   setNewEvent,
   userRole,
   userClasses,
-  setUserClasses,
   selectedEvent,
   onRefreshEvents,
 }: ScheduleEventModalProps) => {
   const [error, setError] = useState("");
+  const [form] = Form.useForm();
+
+  // Memoize isTeacher để tránh re-calculate không cần thiết
+  const isTeacher = useMemo(() => userRole === "teacher", [userRole]);
+
+  const dayOfWeekOptions = [
+    { label: "Thứ 2", value: DayOfWeek.MONDAY },
+    { label: "Thứ 3", value: DayOfWeek.TUESDAY },
+    { label: "Thứ 4", value: DayOfWeek.WEDNESDAY },
+    { label: "Thứ 5", value: DayOfWeek.THURSDAY },
+    { label: "Thứ 6", value: DayOfWeek.FRIDAY },
+    { label: "Thứ 7", value: DayOfWeek.SATURDAY },
+    { label: "Chủ nhật", value: DayOfWeek.SUNDAY },
+  ];
+
+  // Recurrence options
+  const recurrenceOptions = [
+    { label: "Không lặp lại", value: RecurrenceType.NONE },
+    { label: "Hàng tuần", value: RecurrenceType.WEEKLY },
+    { label: "Hàng tháng", value: RecurrenceType.MONTHLY },
+  ];
+
+  // Monthly day options (1-31)
+  const monthlyDayOptions = Array.from({ length: 31 }, (_, i) => ({
+    label: `Ngày ${i + 1}`,
+    value: i + 1,
+  }));
+
+  // Helper functions to convert between formats
+  const getDateValue = (dateStr: string) => {
+    return dateStr ? moment(dateStr, "YYYY-MM-DD") : null;
+  };
+
+  const getTimeValue = (timeStr: string) => {
+    return timeStr ? moment(timeStr, FORMAT_TIME) : null;
+  };
+
+  const formatDateForStorage = (momentObj: moment.Moment | null) => {
+    return momentObj ? momentObj.format("YYYY-MM-DD") : "";
+  };
+
+  const formatTimeForStorage = (momentObj: moment.Moment | null) => {
+    return momentObj ? momentObj.format(FORMAT_TIME) : "";
+  };
 
   const handleSaveEvent = async () => {
-    if (!newEvent.title || !newEvent.date || !newEvent.startTime || !newEvent.endTime) {
-      setError("Vui lòng nhập đầy đủ tiêu đề*, ngày*, giờ bắt đầu* và giờ kết thúc*.");
-      return;
-    }
-
     try {
-      const startDate = moment(`${newEvent.date} ${newEvent.startTime}`, "YYYY-MM-DD HH:mm").toDate();
-      const endDate = moment(`${newEvent.date} ${newEvent.endTime}`, "YYYY-MM-DD HH:mm").toDate();
+      // Validate form
+      const values = await form.validateFields();
+
+      if (
+        !newEvent.title ||
+        !newEvent.date ||
+        !newEvent.startTime ||
+        !newEvent.endTime
+      ) {
+        setError(
+          "Vui lòng nhập đầy đủ tên lịch*, ngày*, giờ bắt đầu* và giờ kết thúc*."
+        );
+        return;
+      }
+
+      // Validate class selection for teacher
+      if (isTeacher && !newEvent.classId) {
+        setError("Vui lòng chọn lớp học.");
+        return;
+      }
+
+      const startDate = moment(
+        `${newEvent.date} ${newEvent.startTime}`,
+        "YYYY-MM-DD HH:mm"
+      ).toDate();
+      const endDate = moment(
+        `${newEvent.date} ${newEvent.endTime}`,
+        "YYYY-MM-DD HH:mm"
+      ).toDate();
+
       if (endDate <= startDate) {
         setError("Thời gian kết thúc phải sau thời gian bắt đầu.");
         return;
@@ -60,179 +138,53 @@ const ScheduleEventModal = ({
         return;
       }
 
-      let classId = newEvent.classId;
-      if (!classId && newEvent.isEditing === false) {
-        classId = `class_${Date.now()}`;
-        await setDoc(doc(db, "classes", classId), {
-          name: newEvent.title,
-          teacherId: auth.currentUser?.uid,
-          studentIds: [],
-          joinRequests: [],
-          createdAt: new Date(),
-          description: newEvent.description || "",
-        });
-        setUserClasses([...userClasses, { id: classId, name: newEvent.title }]);
-      }
+      const weeklyDays = Array.isArray(newEvent.weeklyDays)
+        ? newEvent.weeklyDays
+        : [];
+      const monthlyDay = newEvent.monthlyDay || 1;
 
-      const parentId = newEvent.isEditing ? selectedEvent.parentId : `schedule_${Date.now()}`;
+      const parentId = newEvent.isEditing
+        ? selectedEvent?.parentId || selectedEvent?.id
+        : `schedule_${Date.now()}`;
+
       if (newEvent.isEditing && selectedEvent) {
-        // Xóa tất cả schedule con nếu chuyển sang recurrence "none"
-        if (newEvent.recurrence === "none" && selectedEvent.recurrence !== "none") {
-          const recurringQuery = query(collection(db, "schedules"), where("parentId", "==", parentId));
-          const recurringSnapshot = await getDocs(recurringQuery);
-          const deletePromises = recurringSnapshot.docs
-            .filter((doc) => doc.id !== selectedEvent.id)
-            .map((doc) => deleteDoc(doc.ref));
-          await Promise.all(deletePromises);
-        }
-
+        // Update existing event logic...
         await updateDoc(doc(db, "schedules", selectedEvent.id), {
           title: newEvent.title,
           start: startDate,
           end: endDate,
-          description: newEvent.description,
+          description: newEvent.description || "",
+          classId: newEvent.classId,
           recurrence: newEvent.recurrence,
-          recurrenceEnd: newEvent.recurrenceEnd ? moment(newEvent.recurrenceEnd).toDate() : null,
-          weeklyDays: newEvent.weeklyDays,
-          monthlyDay: newEvent.monthlyDay,
+          recurrenceEnd: newEvent.recurrenceEnd
+            ? moment(newEvent.recurrenceEnd).toDate()
+            : null,
+          weeklyDays: weeklyDays,
+          monthlyDay: monthlyDay,
           updatedAt: new Date(),
         });
-
-        // Nếu chuyển từ không lặp sang lặp, tạo schedule con mới
-        if (selectedEvent.recurrence === "none" && newEvent.recurrence !== "none" && newEvent.recurrenceEnd) {
-          let currentDate = new Date(startDate);
-          const endRecurDate = moment(newEvent.recurrenceEnd).toDate();
-          const interval = newEvent.recurrence === "weekly" ? 7 : 30;
-
-          while (currentDate <= endRecurDate) {
-            currentDate = new Date(currentDate);
-            const nextStart = new Date(currentDate);
-            const nextEnd = new Date(currentDate);
-            nextEnd.setHours(endDate.getHours(), endDate.getMinutes(), 0, 0);
-            if (nextStart > endRecurDate) break;
-
-            if (newEvent.recurrence === "weekly" && newEvent.weeklyDays.length > 0) {
-              const dayOfWeek = currentDate.getDay();
-              if (!newEvent.weeklyDays.includes(dayOfWeek)) {
-                currentDate.setDate(currentDate.getDate() + 1);
-                continue;
-              }
-            } else if (newEvent.recurrence === "monthly" && currentDate.getDate() !== newEvent.monthlyDay) {
-              currentDate.setMonth(currentDate.getMonth() + 1);
-              currentDate.setDate(newEvent.monthlyDay);
-              continue;
-            }
-
-            // Không tạo lại bản ghi gốc
-            if (
-              moment(nextStart).format("YYYY-MM-DD") === moment(startDate).format("YYYY-MM-DD")
-            ) {
-              currentDate.setDate(currentDate.getDate() + (newEvent.recurrence === "weekly" ? 1 : interval));
-              continue;
-            }
-
-            const recurId = `schedule_${Date.now()}_${currentDate.getTime()}`;
-            await setDoc(doc(db, "schedules", recurId), {
-              classId: selectedEvent.classId,
-              teacherId: auth.currentUser?.uid,
-              title: newEvent.title,
-              start: nextStart,
-              end: nextEnd,
-              description: newEvent.description,
-              recurrence: newEvent.recurrence,
-              recurrenceEnd: endRecurDate,
-              parentId,
-              weeklyDays: newEvent.weeklyDays,
-              monthlyDay: newEvent.monthlyDay,
-              createdAt: new Date(),
-            });
-            currentDate.setDate(currentDate.getDate() + (newEvent.recurrence === "weekly" ? 1 : interval));
-          }
-        } else if (newEvent.recurrence !== "none") {
-          // Nếu vẫn là lặp, cập nhật schedule con
-          const recurringQuery = query(collection(db, "schedules"), where("parentId", "==", parentId));
-          const recurringSnapshot = await getDocs(recurringQuery);
-          const updates = recurringSnapshot.docs.map((doc) =>
-            updateDoc(doc.ref, {
-              title: newEvent.title,
-              start: startDate,
-              end: endDate,
-              description: newEvent.description,
-              recurrence: newEvent.recurrence,
-              recurrenceEnd: newEvent.recurrenceEnd ? moment(newEvent.recurrenceEnd).toDate() : null,
-              weeklyDays: newEvent.weeklyDays,
-              monthlyDay: newEvent.monthlyDay,
-            })
-          );
-          await Promise.all(updates);
-        }
-
-        // Refresh events
-        onRefreshEvents();
       } else {
+        // Create new event
         const scheduleId = `schedule_${Date.now()}`;
         await setDoc(doc(db, "schedules", scheduleId), {
-          classId,
+          classId: newEvent.classId,
           teacherId: auth.currentUser?.uid,
           title: newEvent.title,
           start: startDate,
           end: endDate,
-          description: newEvent.description,
+          description: newEvent.description || "",
           recurrence: newEvent.recurrence,
-          recurrenceEnd: newEvent.recurrenceEnd ? moment(newEvent.recurrenceEnd).toDate() : null,
-          parentId,
-          weeklyDays: newEvent.weeklyDays,
-          monthlyDay: newEvent.monthlyDay,
+          recurrenceEnd: newEvent.recurrenceEnd
+            ? moment(newEvent.recurrenceEnd).toDate()
+            : null,
+          parentId: parentId,
+          weeklyDays: weeklyDays,
+          monthlyDay: monthlyDay,
           createdAt: new Date(),
         });
-
-        if (newEvent.recurrence !== "none" && newEvent.recurrenceEnd) {
-          let currentDate = new Date(startDate);
-          const endRecurDate = moment(newEvent.recurrenceEnd).toDate();
-          const interval = newEvent.recurrence === "weekly" ? 7 : 30;
-
-          while (currentDate <= endRecurDate) {
-            currentDate = new Date(currentDate);
-            const nextStart = new Date(currentDate);
-            const nextEnd = new Date(currentDate);
-            nextEnd.setHours(endDate.getHours(), endDate.getMinutes(), 0, 0);
-            if (nextStart > endRecurDate) break;
-
-            if (newEvent.recurrence === "weekly" && newEvent.weeklyDays.length > 0) {
-              const dayOfWeek = currentDate.getDay();
-              if (!newEvent.weeklyDays.includes(dayOfWeek)) {
-                currentDate.setDate(currentDate.getDate() + 1);
-                continue;
-              }
-            } else if (newEvent.recurrence === "monthly" && currentDate.getDate() !== newEvent.monthlyDay) {
-              currentDate.setMonth(currentDate.getMonth() + 1);
-              currentDate.setDate(newEvent.monthlyDay);
-              continue;
-            }
-
-            const recurId = `schedule_${Date.now()}_${currentDate.getTime()}`;
-            await setDoc(doc(db, "schedules", recurId), {
-              classId,
-              teacherId: auth.currentUser?.uid,
-              title: newEvent.title,
-              start: nextStart,
-              end: nextEnd,
-              description: newEvent.description,
-              recurrence: newEvent.recurrence,
-              recurrenceEnd: endRecurDate,
-              parentId,
-              weeklyDays: newEvent.weeklyDays,
-              monthlyDay: newEvent.monthlyDay,
-              createdAt: new Date(),
-            });
-            currentDate.setDate(currentDate.getDate() + (newEvent.recurrence === "weekly" ? 1 : interval));
-          }
-        }
-
-        // Refresh events
-        onRefreshEvents();
       }
 
+      // Reset form and close modal
       setNewEvent({
         date: "",
         startTime: "",
@@ -247,9 +199,15 @@ const ScheduleEventModal = ({
         weeklyDays: [],
         monthlyDay: 1,
       });
+      form.resetFields();
       setShowModal(false);
       setError("");
+      onRefreshEvents();
     } catch (err: any) {
+      if (err.errorFields) {
+        return;
+      }
+      console.error("Error saving schedule:", err);
       setError("Lỗi khi lưu lịch học: " + err.message);
     }
   };
@@ -258,167 +216,254 @@ const ScheduleEventModal = ({
     try {
       const eventDoc = await getDoc(doc(db, "schedules", eventId));
       if (eventDoc.exists()) {
-        const parentId = eventDoc.data().parentId || eventId;
-        const recurringQuery = query(collection(db, "schedules"), where("parentId", "==", parentId));
+        const eventData = eventDoc.data();
+        const parentId = eventData.parentId || eventId;
+
+        const recurringQuery = query(
+          collection(db, "schedules"),
+          where("parentId", "==", parentId)
+        );
         const recurringSnapshot = await getDocs(recurringQuery);
-        const deletePromises = recurringSnapshot.docs.map((doc) => deleteDoc(doc.ref));
+        const deletePromises = recurringSnapshot.docs.map((doc) =>
+          deleteDoc(doc.ref)
+        );
         await Promise.all(deletePromises);
 
-        // Refresh events after deletion
-        onRefreshEvents();
         setShowModal(false);
         setError("");
+        onRefreshEvents();
       }
     } catch (err: any) {
+      console.error("Error deleting schedule:", err);
       setError("Lỗi xóa lịch: " + err.message);
     }
   };
+
   return (
     <Modal
       title={newEvent.isEditing ? "Chỉnh sửa lịch học" : "Thêm lịch học mới"}
       open={showModal}
       onCancel={() => setShowModal(false)}
+      centered
       footer={null}
+      width={700}
     >
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tiêu đề<span className="text-red-500">*</span></label>
-          <Input
-            value={newEvent.title}
-            onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
-            placeholder="Nhập tiêu đề lịch học"
-          />
-        </div>
-        <div className="grid grid-cols-1 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Ngày<span className="text-red-500">*</span></label>
+      <Form form={form} layout="vertical" size="large">
+        {/* Tên lịch và Lớp học cùng 1 hàng */}
+        <div className="grid grid-cols-2 gap-4">
+          <Form.Item
+            label="Tên lịch"
+            name="title"
+            rules={[{ required: true, message: "Vui lòng nhập tên lịch!" }]}
+          >
             <Input
-              type="date"
-              value={newEvent.date}
-              onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
+              value={newEvent.title}
+              onChange={(e) =>
+                setNewEvent({ ...newEvent, title: e.target.value })
+              }
+              placeholder="Nhập tên lịch học"
             />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Giờ bắt đầu<span className="text-red-500">*</span></label>
-              <Input
-                type="time"
-                value={newEvent.startTime}
-                onChange={(e) => setNewEvent({ ...newEvent, startTime: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Giờ kết thúc<span className="text-red-500">*</span></label>
-              <Input
-                type="time"
-                value={newEvent.endTime}
-                onChange={(e) => setNewEvent({ ...newEvent, endTime: e.target.value })}
-              />
-            </div>
-          </div>
+          </Form.Item>
+
+          {isTeacher && (
+            <Form.Item
+              label="Lớp học"
+              name="classId"
+              rules={[{ required: true, message: "Vui lòng chọn lớp học!" }]}
+            >
+              <Select
+                value={newEvent.classId}
+                onChange={(value) =>
+                  setNewEvent({ ...newEvent, classId: value })
+                }
+                placeholder="Chọn lớp học"
+              >
+                {userClasses.map((cls) => (
+                  <Option key={cls.id} value={cls.id}>
+                    {cls.name}
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
+          )}
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Mô tả</label>
+
+        {/* Ngày */}
+        <Form.Item
+          label="Ngày"
+          name="date"
+          rules={[{ required: true, message: "Vui lòng chọn ngày!" }]}
+        >
+          <DatePicker
+            value={getDateValue(newEvent.date)}
+            onChange={(date) =>
+              setNewEvent({ ...newEvent, date: formatDateForStorage(date) })
+            }
+            format={FORMAT_DATE}
+            placeholder="Chọn ngày"
+            style={{ width: "100%" }}
+          />
+        </Form.Item>
+
+        {/* Giờ bắt đầu và Giờ kết thúc */}
+        <div className="grid grid-cols-2 gap-4">
+          <Form.Item
+            label="Giờ bắt đầu"
+            name="startTime"
+            rules={[{ required: true, message: "Vui lòng chọn giờ bắt đầu!" }]}
+          >
+            <TimePicker
+              value={getTimeValue(newEvent.startTime)}
+              onChange={(time) =>
+                setNewEvent({
+                  ...newEvent,
+                  startTime: formatTimeForStorage(time),
+                })
+              }
+              format={FORMAT_TIME}
+              placeholder="Chọn giờ bắt đầu"
+              style={{ width: "100%" }}
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="Giờ kết thúc"
+            name="endTime"
+            rules={[{ required: true, message: "Vui lòng chọn giờ kết thúc!" }]}
+          >
+            <TimePicker
+              value={getTimeValue(newEvent.endTime)}
+              onChange={(time) =>
+                setNewEvent({
+                  ...newEvent,
+                  endTime: formatTimeForStorage(time),
+                })
+              }
+              format={FORMAT_TIME}
+              placeholder="Chọn giờ kết thúc"
+              style={{ width: "100%" }}
+            />
+          </Form.Item>
+        </div>
+
+        {/* Mô tả */}
+        <Form.Item label="Mô tả">
           <Input.TextArea
             value={newEvent.description}
-            onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+            onChange={(e) =>
+              setNewEvent({ ...newEvent, description: e.target.value })
+            }
             rows={3}
             placeholder="Nhập mô tả chi tiết"
           />
-        </div>
-        {userRole === "teacher" && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Liên kết với lớp học</label>
-            <Select
-              value={newEvent.classId}
-              onChange={(value) => setNewEvent({ ...newEvent, classId: value })}
-              style={{ width: "100%" }}
-            >
-              <Option value="">-- Tạo lớp học mới --</Option>
-              {userClasses.map((cls) => (
-                <Option key={cls.id} value={cls.id}>
-                  {cls.name}
-                </Option>
-              ))}
-            </Select>
-          </div>
-        )}
-        {userRole === "teacher" && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Lặp lại</label>
+        </Form.Item>
+
+        {/* Lặp lại - chỉ hiển thị cho teacher */}
+        {isTeacher && (
+          <Form.Item label="Lặp lại">
             <Select
               value={newEvent.recurrence}
-              onChange={(value) => setNewEvent({ ...newEvent, recurrence: value, weeklyDays: [], monthlyDay: 1 })}
-              style={{ width: "100%" }}
-            >
-              <Option value="none">Không lặp lại</Option>
-              <Option value="weekly">Hàng tuần</Option>
-              <Option value="monthly">Hàng tháng</Option>
-            </Select>
-          </div>
+              onChange={(value) =>
+                setNewEvent({
+                  ...newEvent,
+                  recurrence: value,
+                  weeklyDays: [],
+                  monthlyDay: 1,
+                })
+              }
+              options={recurrenceOptions}
+            ></Select>
+          </Form.Item>
         )}
-        {userRole === "teacher" && newEvent.recurrence === "weekly" && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Chọn ngày trong tuần</label>
+
+        {/* Chọn ngày trong tuần - cho lặp lại hàng tuần */}
+        {isTeacher && newEvent.recurrence === "weekly" && (
+          <Form.Item label="Chọn ngày trong tuần">
             <Checkbox.Group
-              value={newEvent.weeklyDays}
-              onChange={(checkedValues) => setNewEvent({ ...newEvent, weeklyDays: checkedValues as number[] })}
-              style={{ width: "100%" }}
+              value={
+                Array.isArray(newEvent.weeklyDays) ? newEvent.weeklyDays : []
+              }
+              onChange={(checkedValues) =>
+                setNewEvent({
+                  ...newEvent,
+                  weeklyDays: checkedValues as number[],
+                })
+              }
             >
-              <Checkbox value={0}>Chủ nhật</Checkbox>
-              <Checkbox value={1}>Thứ 2</Checkbox>
-              <Checkbox value={2}>Thứ 3</Checkbox>
-              <Checkbox value={3}>Thứ 4</Checkbox>
-              <Checkbox value={4}>Thứ 5</Checkbox>
-              <Checkbox value={5}>Thứ 6</Checkbox>
-              <Checkbox value={6}>Thứ 7</Checkbox>
+              <div className="flex gap-3">
+                {dayOfWeekOptions.map((option) => (
+                  <Checkbox key={option.value} value={option.value}>
+                    {option.label}
+                  </Checkbox>
+                ))}
+              </div>
             </Checkbox.Group>
-          </div>
+          </Form.Item>
         )}
-        {userRole === "teacher" && newEvent.recurrence === "monthly" && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Ngày cố định trong tháng</label>
+
+        {/* Ngày cố định trong tháng - cho lặp lại hàng tháng */}
+        {isTeacher && newEvent.recurrence === "monthly" && (
+          <Form.Item label="Ngày cố định trong tháng">
             <Select
-              value={newEvent.monthlyDay}
-              onChange={(value) => setNewEvent({ ...newEvent, monthlyDay: value })}
-              style={{ width: "100%" }}
-            >
-              {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                <Option key={day} value={day}>
-                  {day}
-                </Option>
-              ))}
-            </Select>
-          </div>
-        )}
-        {userRole === "teacher" && newEvent.recurrence !== "none" && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Kết thúc lặp lại</label>
-            <Input
-              type="date"
-              value={newEvent.recurrenceEnd}
-              onChange={(e) => setNewEvent({ ...newEvent, recurrenceEnd: e.target.value })}
+              value={newEvent.monthlyDay || 1}
+              onChange={(value) =>
+                setNewEvent({ ...newEvent, monthlyDay: value })
+              }
+              options={monthlyDayOptions}
             />
-          </div>
+          </Form.Item>
         )}
-        {error && <Alert type="error" message={error} showIcon />}
-        <div className="flex justify-end space-x-4 mt-4">
-          {newEvent.isEditing && userRole === "teacher" && (
+
+        {/* Kết thúc lặp lại */}
+        {isTeacher && newEvent.recurrence !== "none" && (
+          <Form.Item
+            label={
+              <span>
+                Kết thúc lặp lại
+                <span className="text-red-500 ml-1">*</span>
+              </span>
+            }
+          >
+            <DatePicker
+              value={getDateValue(newEvent.recurrenceEnd)}
+              onChange={(date) =>
+                setNewEvent({
+                  ...newEvent,
+                  recurrenceEnd: formatDateForStorage(date),
+                })
+              }
+              format={FORMAT_DATE}
+              placeholder="Chọn ngày kết thúc"
+            />
+          </Form.Item>
+        )}
+
+        {/* Error Alert */}
+        {error && (
+          <Alert type="error" message={error} showIcon className="mb-4" />
+        )}
+
+        {/* Footer buttons */}
+        <div className="flex justify-end gap-3 pt-6 border-t border-gray-200">
+          {newEvent.isEditing && isTeacher && (
             <Button
               danger
               onClick={() => handleDeleteEvent(selectedEvent.id)}
+              size="large"
             >
               Xóa lịch
             </Button>
           )}
-          <Button onClick={() => setShowModal(false)}>Hủy</Button>
-          {userRole === "teacher" && (
-            <Button type="primary" onClick={handleSaveEvent}>
+          <Button onClick={() => setShowModal(false)} size="large">
+            Hủy
+          </Button>
+          {isTeacher && (
+            <Button type="primary" onClick={handleSaveEvent} size="large">
               {newEvent.isEditing ? "Cập nhật" : "Thêm lịch"}
             </Button>
           )}
         </div>
-      </div>
+      </Form>
     </Modal>
   );
 };
