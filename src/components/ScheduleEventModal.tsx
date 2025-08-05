@@ -23,11 +23,11 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { auth, db } from "@/firebase/firebase";
-import { 
-  FORMAT_DATE, 
-  FORMAT_DATE_INPUT, 
-  FORMAT_TIME, 
-  FORMAT_TIME_12H 
+import {
+  FORMAT_DATE,
+  FORMAT_DATE_INPUT,
+  FORMAT_TIME,
+  FORMAT_TIME_12H,
 } from "@/constants";
 import { DayOfWeek, RecurrenceType } from "@/assets/enums";
 
@@ -72,10 +72,11 @@ const ScheduleEventModal = ({
 
   // Memoize isTeacher để tránh re-calculate không cần thiết
   const isTeacher = useMemo(() => userRole === "teacher", [userRole]);
+  const isStudent = useMemo(() => userRole === "student", [userRole]);
 
   // Watch form fields for conditional rendering
-  const recurrence = Form.useWatch('recurrence', form);
-  const selectedDate = Form.useWatch('date', form);
+  const recurrence = Form.useWatch("recurrence", form);
+  const selectedDate = Form.useWatch("date", form);
 
   // Default form data
   const getDefaultFormData = (): ScheduleFormData => ({
@@ -166,11 +167,21 @@ const ScheduleEventModal = ({
       const values = await form.validateFields();
 
       // Create datetime strings using dayjs
-      const startDateTime = `${values.date.format(FORMAT_DATE_INPUT)} ${values.startTime.format(FORMAT_TIME)}`;
-      const endDateTime = `${values.date.format(FORMAT_DATE_INPUT)} ${values.endTime.format(FORMAT_TIME)}`;
+      const startDateTime = `${values.date.format(
+        FORMAT_DATE_INPUT
+      )} ${values.startTime.format(FORMAT_TIME)}`;
+      const endDateTime = `${values.date.format(
+        FORMAT_DATE_INPUT
+      )} ${values.endTime.format(FORMAT_TIME)}`;
 
-      const startDate = dayjs(startDateTime, `${FORMAT_DATE_INPUT} ${FORMAT_TIME}`).toDate();
-      const endDate = dayjs(endDateTime, `${FORMAT_DATE_INPUT} ${FORMAT_TIME}`).toDate();
+      const startDate = dayjs(
+        startDateTime,
+        `${FORMAT_DATE_INPUT} ${FORMAT_TIME}`
+      ).toDate();
+      const endDate = dayjs(
+        endDateTime,
+        `${FORMAT_DATE_INPUT} ${FORMAT_TIME}`
+      ).toDate();
 
       if (endDate <= startDate) {
         setError("Thời gian kết thúc phải sau thời gian bắt đầu.");
@@ -183,7 +194,10 @@ const ScheduleEventModal = ({
       }
 
       // Validate weekly days for weekly recurrence
-      if (values.recurrence === RecurrenceType.WEEKLY && (!values.weeklyDays || values.weeklyDays.length === 0)) {
+      if (
+        values.recurrence === RecurrenceType.WEEKLY &&
+        (!values.weeklyDays || values.weeklyDays.length === 0)
+      ) {
         setError("Vui lòng chọn ít nhất một ngày trong tuần.");
         return;
       }
@@ -194,12 +208,15 @@ const ScheduleEventModal = ({
         return;
       }
 
-      const weeklyDays = Array.isArray(values.weeklyDays) ? values.weeklyDays : [];
+      const weeklyDays = Array.isArray(values.weeklyDays)
+        ? values.weeklyDays
+        : [];
       const monthlyDay = values.monthlyDay || 1;
 
-      const parentId = mode === "edit" && selectedEvent
-        ? selectedEvent.parentId || selectedEvent.id
-        : `schedule_${Date.now()}`;
+      const parentId =
+        mode === "edit" && selectedEvent
+          ? selectedEvent.parentId || selectedEvent.id
+          : `schedule_${Date.now()}`;
 
       if (mode === "edit" && selectedEvent) {
         // Update existing event
@@ -210,7 +227,9 @@ const ScheduleEventModal = ({
           description: values.description || "",
           classId: values.classId,
           recurrence: values.recurrence,
-          recurrenceEnd: values.recurrenceEnd ? values.recurrenceEnd.toDate() : null,
+          recurrenceEnd: values.recurrenceEnd
+            ? values.recurrenceEnd.toDate()
+            : null,
           weeklyDays: weeklyDays,
           monthlyDay: monthlyDay,
           updatedAt: new Date(),
@@ -218,7 +237,11 @@ const ScheduleEventModal = ({
 
         // Xử lý recurring events
         // Nếu chuyển từ không lặp sang lặp, tạo schedule con mới
-        if (selectedEvent.recurrence === RecurrenceType.NONE && values.recurrence !== RecurrenceType.NONE && values.recurrenceEnd) {
+        if (
+          selectedEvent.recurrence === RecurrenceType.NONE &&
+          values.recurrence !== RecurrenceType.NONE &&
+          values.recurrenceEnd
+        ) {
           let currentDate = new Date(startDate);
           const endRecurDate = values.recurrenceEnd.toDate();
           const interval = values.recurrence === RecurrenceType.WEEKLY ? 7 : 30;
@@ -228,24 +251,36 @@ const ScheduleEventModal = ({
             const nextStart = new Date(currentDate);
             const nextEnd = new Date(currentDate);
             nextEnd.setHours(endDate.getHours(), endDate.getMinutes(), 0, 0);
-            
+
             if (nextStart > endRecurDate) break;
 
-            if (values.recurrence === RecurrenceType.WEEKLY && weeklyDays.length > 0) {
+            if (
+              values.recurrence === RecurrenceType.WEEKLY &&
+              weeklyDays.length > 0
+            ) {
               const dayOfWeek = currentDate.getDay();
               if (!weeklyDays.includes(dayOfWeek)) {
                 currentDate.setDate(currentDate.getDate() + 1);
                 continue;
               }
-            } else if (values.recurrence === RecurrenceType.MONTHLY && currentDate.getDate() !== monthlyDay) {
+            } else if (
+              values.recurrence === RecurrenceType.MONTHLY &&
+              currentDate.getDate() !== monthlyDay
+            ) {
               currentDate.setMonth(currentDate.getMonth() + 1);
               currentDate.setDate(monthlyDay);
               continue;
             }
 
             // Không tạo lại bản ghi gốc
-            if (dayjs(nextStart).format(FORMAT_DATE_INPUT) === dayjs(startDate).format(FORMAT_DATE_INPUT)) {
-              currentDate.setDate(currentDate.getDate() + (values.recurrence === RecurrenceType.WEEKLY ? 1 : interval));
+            if (
+              dayjs(nextStart).format(FORMAT_DATE_INPUT) ===
+              dayjs(startDate).format(FORMAT_DATE_INPUT)
+            ) {
+              currentDate.setDate(
+                currentDate.getDate() +
+                  (values.recurrence === RecurrenceType.WEEKLY ? 1 : interval)
+              );
               continue;
             }
 
@@ -264,12 +299,15 @@ const ScheduleEventModal = ({
               monthlyDay: monthlyDay,
               createdAt: new Date(),
             });
-            currentDate.setDate(currentDate.getDate() + (values.recurrence === RecurrenceType.WEEKLY ? 1 : interval));
+            currentDate.setDate(
+              currentDate.getDate() +
+                (values.recurrence === RecurrenceType.WEEKLY ? 1 : interval)
+            );
           }
         } else if (values.recurrence !== RecurrenceType.NONE) {
           // Nếu vẫn là lặp, xử lý cập nhật schedule con
           const recurringQuery = query(
-            collection(db, "schedules"), 
+            collection(db, "schedules"),
             where("parentId", "==", parentId)
           );
           const recurringSnapshot = await getDocs(recurringQuery);
@@ -278,17 +316,17 @@ const ScheduleEventModal = ({
           if (values.recurrenceEnd) {
             const newEndDate = values.recurrenceEnd.toDate();
             const eventsToDelete: string[] = [];
-            
+
             recurringSnapshot.docs.forEach((doc) => {
               const eventData = doc.data();
               const eventStart = eventData.start.toDate();
-              
+
               // Nếu event bắt đầu sau ngày kết thúc mới, đánh dấu để xóa
               if (eventStart > newEndDate) {
                 eventsToDelete.push(doc.id);
               }
             });
-            
+
             // Xóa các events nằm ngoài phạm vi
             if (eventsToDelete.length > 0) {
               const deletePromises = eventsToDelete.map((eventId) =>
@@ -299,7 +337,7 @@ const ScheduleEventModal = ({
           }
 
           // Cập nhật các events còn lại
-          const remainingEvents = recurringSnapshot.docs.filter(doc => {
+          const remainingEvents = recurringSnapshot.docs.filter((doc) => {
             if (!values.recurrenceEnd) return true;
             const eventData = doc.data();
             const eventStart = eventData.start.toDate();
@@ -309,13 +347,23 @@ const ScheduleEventModal = ({
           const updates = remainingEvents.map((doc) => {
             const eventData = doc.data();
             const originalStart = eventData.start.toDate();
-            
+
             // Tính toán thời gian mới dựa trên thời gian gốc và thời gian mới được chọn
             const newEventStart = new Date(originalStart);
-            newEventStart.setHours(startDate.getHours(), startDate.getMinutes(), 0, 0);
-            
+            newEventStart.setHours(
+              startDate.getHours(),
+              startDate.getMinutes(),
+              0,
+              0
+            );
+
             const newEventEnd = new Date(originalStart);
-            newEventEnd.setHours(endDate.getHours(), endDate.getMinutes(), 0, 0);
+            newEventEnd.setHours(
+              endDate.getHours(),
+              endDate.getMinutes(),
+              0,
+              0
+            );
 
             return updateDoc(doc.ref, {
               title: values.title,
@@ -323,46 +371,65 @@ const ScheduleEventModal = ({
               end: newEventEnd,
               description: values.description || "",
               recurrence: values.recurrence,
-              recurrenceEnd: values.recurrenceEnd ? values.recurrenceEnd.toDate() : null,
+              recurrenceEnd: values.recurrenceEnd
+                ? values.recurrenceEnd.toDate()
+                : null,
               weeklyDays: weeklyDays,
               monthlyDay: monthlyDay,
               updatedAt: new Date(),
             });
           });
-          
+
           await Promise.all(updates);
 
           // Nếu mở rộng recurrenceEnd, tạo thêm events mới
           if (values.recurrenceEnd && selectedEvent.recurrenceEnd) {
-            const oldEndDate = selectedEvent.recurrenceEnd instanceof Date 
-              ? selectedEvent.recurrenceEnd 
-              : selectedEvent.recurrenceEnd.toDate();
+            const oldEndDate =
+              selectedEvent.recurrenceEnd instanceof Date
+                ? selectedEvent.recurrenceEnd
+                : selectedEvent.recurrenceEnd.toDate();
             const newEndDate = values.recurrenceEnd.toDate();
-            
+
             if (newEndDate > oldEndDate) {
               // Tạo thêm events từ oldEndDate + 1 đến newEndDate
               let currentDate = new Date(oldEndDate);
               currentDate.setDate(currentDate.getDate() + 1); // Bắt đầu từ ngày sau oldEndDate
-              
+
               while (currentDate <= newEndDate) {
                 let shouldCreateEvent = false;
-                
-                if (values.recurrence === RecurrenceType.WEEKLY && weeklyDays.length > 0) {
+
+                if (
+                  values.recurrence === RecurrenceType.WEEKLY &&
+                  weeklyDays.length > 0
+                ) {
                   const dayOfWeek = currentDate.getDay();
                   if (weeklyDays.includes(dayOfWeek)) {
                     shouldCreateEvent = true;
                   }
-                } else if (values.recurrence === RecurrenceType.MONTHLY && currentDate.getDate() === monthlyDay) {
+                } else if (
+                  values.recurrence === RecurrenceType.MONTHLY &&
+                  currentDate.getDate() === monthlyDay
+                ) {
                   shouldCreateEvent = true;
                 }
-                
+
                 if (shouldCreateEvent) {
                   const nextStart = new Date(currentDate);
-                  nextStart.setHours(startDate.getHours(), startDate.getMinutes(), 0, 0);
-                  
+                  nextStart.setHours(
+                    startDate.getHours(),
+                    startDate.getMinutes(),
+                    0,
+                    0
+                  );
+
                   const nextEnd = new Date(currentDate);
-                  nextEnd.setHours(endDate.getHours(), endDate.getMinutes(), 0, 0);
-                  
+                  nextEnd.setHours(
+                    endDate.getHours(),
+                    endDate.getMinutes(),
+                    0,
+                    0
+                  );
+
                   const recurId = `schedule_${Date.now()}_${currentDate.getTime()}`;
                   await setDoc(doc(db, "schedules", recurId), {
                     classId: selectedEvent.classId,
@@ -379,27 +446,29 @@ const ScheduleEventModal = ({
                     createdAt: new Date(),
                   });
                 }
-                
+
                 currentDate.setDate(currentDate.getDate() + 1);
               }
             }
           }
-        } else if (selectedEvent.recurrence !== RecurrenceType.NONE && values.recurrence === RecurrenceType.NONE) {
+        } else if (
+          selectedEvent.recurrence !== RecurrenceType.NONE &&
+          values.recurrence === RecurrenceType.NONE
+        ) {
           // Nếu chuyển từ lặp về không lặp, xóa tất cả schedule con
           const recurringQuery = query(
-            collection(db, "schedules"), 
+            collection(db, "schedules"),
             where("parentId", "==", parentId)
           );
           const recurringSnapshot = await getDocs(recurringQuery);
           const deletePromises = recurringSnapshot.docs
-            .filter(doc => doc.id !== selectedEvent.id) // Không xóa event gốc
+            .filter((doc) => doc.id !== selectedEvent.id) // Không xóa event gốc
             .map((doc) => deleteDoc(doc.ref));
-          
+
           if (deletePromises.length > 0) {
             await Promise.all(deletePromises);
           }
         }
-
       } else {
         // Create new event
         const scheduleId = `schedule_${Date.now()}`;
@@ -411,7 +480,9 @@ const ScheduleEventModal = ({
           end: endDate,
           description: values.description || "",
           recurrence: values.recurrence,
-          recurrenceEnd: values.recurrenceEnd ? values.recurrenceEnd.toDate() : null,
+          recurrenceEnd: values.recurrenceEnd
+            ? values.recurrenceEnd.toDate()
+            : null,
           parentId: parentId,
           weeklyDays: weeklyDays,
           monthlyDay: monthlyDay,
@@ -429,24 +500,36 @@ const ScheduleEventModal = ({
             const nextStart = new Date(currentDate);
             const nextEnd = new Date(currentDate);
             nextEnd.setHours(endDate.getHours(), endDate.getMinutes(), 0, 0);
-            
+
             if (nextStart > endRecurDate) break;
 
-            if (values.recurrence === RecurrenceType.WEEKLY && weeklyDays.length > 0) {
+            if (
+              values.recurrence === RecurrenceType.WEEKLY &&
+              weeklyDays.length > 0
+            ) {
               const dayOfWeek = currentDate.getDay();
               if (!weeklyDays.includes(dayOfWeek)) {
                 currentDate.setDate(currentDate.getDate() + 1);
                 continue;
               }
-            } else if (values.recurrence === RecurrenceType.MONTHLY && currentDate.getDate() !== monthlyDay) {
+            } else if (
+              values.recurrence === RecurrenceType.MONTHLY &&
+              currentDate.getDate() !== monthlyDay
+            ) {
               currentDate.setMonth(currentDate.getMonth() + 1);
               currentDate.setDate(monthlyDay);
               continue;
             }
 
             // Không tạo lại bản ghi gốc
-            if (dayjs(nextStart).format(FORMAT_DATE_INPUT) === dayjs(startDate).format(FORMAT_DATE_INPUT)) {
-              currentDate.setDate(currentDate.getDate() + (values.recurrence === RecurrenceType.WEEKLY ? 1 : interval));
+            if (
+              dayjs(nextStart).format(FORMAT_DATE_INPUT) ===
+              dayjs(startDate).format(FORMAT_DATE_INPUT)
+            ) {
+              currentDate.setDate(
+                currentDate.getDate() +
+                  (values.recurrence === RecurrenceType.WEEKLY ? 1 : interval)
+              );
               continue;
             }
 
@@ -465,7 +548,10 @@ const ScheduleEventModal = ({
               monthlyDay: monthlyDay,
               createdAt: new Date(),
             });
-            currentDate.setDate(currentDate.getDate() + (values.recurrence === RecurrenceType.WEEKLY ? 1 : interval));
+            currentDate.setDate(
+              currentDate.getDate() +
+                (values.recurrence === RecurrenceType.WEEKLY ? 1 : interval)
+            );
           }
         }
       }
@@ -475,11 +561,14 @@ const ScheduleEventModal = ({
       onRefreshEvents();
       setError("");
     } catch (err) {
-      if (err && typeof err === 'object' && 'errorFields' in err) {
+      if (err && typeof err === "object" && "errorFields" in err) {
         return;
       }
       console.error("Error saving schedule:", err);
-      setError("Lỗi khi lưu lịch học: " + (err instanceof Error ? err.message : 'Unknown error'));
+      setError(
+        "Lỗi khi lưu lịch học: " +
+          (err instanceof Error ? err.message : "Unknown error")
+      );
     } finally {
       setLoading(false);
     }
@@ -512,31 +601,41 @@ const ScheduleEventModal = ({
       }
     } catch (err) {
       console.error("Error deleting schedule:", err);
-      setError("Lỗi xóa lịch: " + (err instanceof Error ? err.message : 'Unknown error'));
+      setError(
+        "Lỗi xóa lịch: " +
+          (err instanceof Error ? err.message : "Unknown error")
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const title = useMemo(() => {
+    if(isStudent) return "Chi tiết lịch học"
+    return mode === "edit" ? "Chỉnh sửa lịch học" : "Thêm lịch học mới";
+  }, [isStudent, mode]);
+
   return (
     <Modal
-      title={mode === "edit" ? "Chỉnh sửa lịch học" : "Thêm lịch học mới"}
+      title={title}
       open={open}
       onCancel={onClose}
       centered
       footer={null}
       width={700}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical" size="large">
         {/* Tên lịch và Lớp học cùng 1 hàng */}
-        <div className="grid grid-cols-2 gap-4">
+        <div
+          className={`grid ${isStudent ? "grid-cols-1" : "grid-cols-2"} gap-4`}
+        >
           <Form.Item
             label="Tên lịch"
             name="title"
             rules={[{ required: true, message: "Vui lòng nhập tên lịch!" }]}
           >
-            <Input placeholder="Nhập tên lịch học" />
+            <Input placeholder="Nhập tên lịch học" disabled={isStudent} />
           </Form.Item>
 
           {isTeacher && (
@@ -566,6 +665,7 @@ const ScheduleEventModal = ({
             format={FORMAT_DATE}
             placeholder="Chọn ngày"
             style={{ width: "100%" }}
+            disabled={isStudent}
           />
         </Form.Item>
 
@@ -582,6 +682,7 @@ const ScheduleEventModal = ({
               use12Hours
               placeholder="Chọn giờ bắt đầu"
               style={{ width: "100%" }}
+              disabled={isStudent}
             />
           </Form.Item>
 
@@ -596,6 +697,7 @@ const ScheduleEventModal = ({
               use12Hours
               placeholder="Chọn giờ kết thúc"
               style={{ width: "100%" }}
+              disabled={isStudent}
             />
           </Form.Item>
         </div>
@@ -605,6 +707,7 @@ const ScheduleEventModal = ({
           <Input.TextArea
             rows={3}
             placeholder="Nhập mô tả chi tiết"
+            disabled={isStudent}
           />
         </Form.Item>
 
@@ -629,16 +732,16 @@ const ScheduleEventModal = ({
 
         {/* Chọn ngày trong tuần - cho lặp lại hàng tuần */}
         {isTeacher && recurrence === RecurrenceType.WEEKLY && (
-          <Form.Item 
-            label="Chọn ngày trong tuần" 
+          <Form.Item
+            label="Chọn ngày trong tuần"
             name="weeklyDays"
             rules={[
-              { 
-                required: true, 
+              {
+                required: true,
                 message: "Vui lòng chọn ít nhất một ngày trong tuần!",
                 type: "array",
-                min: 1
-              }
+                min: 1,
+              },
             ]}
           >
             <Checkbox.Group>
@@ -655,18 +758,18 @@ const ScheduleEventModal = ({
 
         {/* Ngày cố định trong tháng - cho lặp lại hàng tháng */}
         {isTeacher && recurrence === RecurrenceType.MONTHLY && (
-          <Form.Item 
-            label="Ngày cố định trong tháng" 
+          <Form.Item
+            label="Ngày cố định trong tháng"
             name="monthlyDay"
             rules={[
-              { 
-                required: true, 
-                message: "Vui lòng chọn ngày trong tháng!" 
-              }
+              {
+                required: true,
+                message: "Vui lòng chọn ngày trong tháng!",
+              },
             ]}
           >
-            <Select 
-              options={monthlyDayOptions} 
+            <Select
+              options={monthlyDayOptions}
               placeholder="Chọn ngày trong tháng"
             />
           </Form.Item>
@@ -686,15 +789,17 @@ const ScheduleEventModal = ({
               { required: true, message: "Vui lòng chọn ngày kết thúc!" },
               ({ getFieldValue }) => ({
                 validator(_, value) {
-                  const startDate = getFieldValue('date');
+                  const startDate = getFieldValue("date");
                   if (!value || !startDate) {
                     return Promise.resolve();
                   }
-                  
-                  if (value.isBefore(startDate, 'day')) {
-                    return Promise.reject(new Error('Ngày kết thúc phải sau ngày bắt đầu!'));
+
+                  if (value.isBefore(startDate, "day")) {
+                    return Promise.reject(
+                      new Error("Ngày kết thúc phải sau ngày bắt đầu!")
+                    );
                   }
-                  
+
                   return Promise.resolve();
                 },
               }),
@@ -707,7 +812,7 @@ const ScheduleEventModal = ({
               disabledDate={(current) => {
                 // Disable dates before the selected start date
                 if (!selectedDate) return false;
-                return current && current.isBefore(selectedDate, 'day');
+                return current && current.isBefore(selectedDate, "day");
               }}
             />
           </Form.Item>
