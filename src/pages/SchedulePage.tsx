@@ -22,6 +22,20 @@ import "../styles/calendar.css";
 
 const localizer = momentLocalizer(moment);
 
+// Hàm tùy chỉnh để định dạng ngày trong tuần thành tiếng Việt
+const vietnameseWeekdayFormat = (date: Date) => {
+  const days = [
+    "Chủ Nhật",
+    "Thứ 2",
+    "Thứ 3",
+    "Thứ 4",
+    "Thứ 5",
+    "Thứ 6",
+    "Thứ 7",
+  ];
+  return days[date.getDay()];
+};
+
 function SchedulePage() {
   const [userRole, setUserRole] = useState("");
   const [userId, setUserId] = useState("");
@@ -309,7 +323,7 @@ function SchedulePage() {
                 FORMAT_TIME_12H
               )}`,
             dayFormat: (date: Date) => moment(date).format("DD/MM"),
-            weekdayFormat: (date: Date) => moment(date).format("dddd"),
+            weekdayFormat: vietnameseWeekdayFormat, // Sử dụng hàm tùy chỉnh để hiển thị ngày tiếng Việt
             monthHeaderFormat: (date: Date) => moment(date).format("MMMM YYYY"),
             dayHeaderFormat: (date: Date) => moment(date).format(FORMAT_DATE),
             dayRangeHeaderFormat: ({ start, end }) =>
