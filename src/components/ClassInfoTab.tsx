@@ -29,7 +29,6 @@ function ClassInfoTab({ classId, userRole, userId, initialClassData, onClassData
   const [classData, setClassData] = useState<ClassData | null>(initialClassData || null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [loading, setLoading] = useState(!initialClassData);
-  const [scheduleCount, setScheduleCount] = useState(0);
 
   const fetchClassData = async () => {
     try {
@@ -51,24 +50,12 @@ function ClassInfoTab({ classId, userRole, userId, initialClassData, onClassData
     }
   };
 
-  const fetchScheduleCount = async () => {
-    try {
-      const schedulesQuery = query(
-        collection(db, "schedules"),
-        where("classId", "==", classId)
-      );
-      const schedulesSnapshot = await getDocs(schedulesQuery);
-      setScheduleCount(schedulesSnapshot.docs.length);
-    } catch (error: unknown) {
-      console.error("Error fetching schedule count:", error);
-    }
-  };
+  
 
   useEffect(() => {
     if (!initialClassData) {
       fetchClassData();
     }
-    fetchScheduleCount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId, initialClassData]);
 
@@ -120,9 +107,7 @@ function ClassInfoTab({ classId, userRole, userId, initialClassData, onClassData
       message.destroy();
 
       // Hiển thị success message với thông tin chi tiết
-      const successMessage = scheduleCount > 0 
-        ? `Đã xóa lớp học và ${scheduleCount} lịch học liên quan thành công!`
-        : "Đã xóa lớp học thành công!";
+      const successMessage = "Đã xóa lớp học và lịch học liên quan thành công!";
       
       onShowMessage?.('success', successMessage);
       navigate("/classes");
@@ -159,7 +144,7 @@ function ClassInfoTab({ classId, userRole, userId, initialClassData, onClassData
                   <p>Hành động này sẽ xóa:</p>
                   <ul className="ml-4 mt-2">
                     <li>• Lớp học "{classData.name}"</li>
-                    <li>• Tất cả {scheduleCount} lịch học của lớp</li>
+                    <li>• Tất cả lịch học của lớp</li>
                     <li>• Dữ liệu không thể khôi phục</li>
                   </ul>
                   <p className="mt-2 font-medium text-red-600">Bạn có chắc chắn muốn tiếp tục?</p>
@@ -187,12 +172,6 @@ function ClassInfoTab({ classId, userRole, userId, initialClassData, onClassData
           {classData.createdAt
             ? new Date(classData.createdAt.seconds * 1000).toLocaleDateString()
             : "N/A"}
-        </Descriptions.Item>
-        <Descriptions.Item label="Số học sinh">
-          {classData.studentIds?.length || 0} học sinh
-        </Descriptions.Item>
-        <Descriptions.Item label="Số lịch học">
-          {scheduleCount} lịch học
         </Descriptions.Item>
       </Descriptions>
 

@@ -611,7 +611,7 @@ const ScheduleEventModal = ({
   };
 
   const title = useMemo(() => {
-    if(isStudent) return "Chi tiết lịch học"
+    if (isStudent) return "Chi tiết lịch học";
     return mode === "edit" ? "Chỉnh sửa lịch học" : "Thêm lịch học mới";
   }, [isStudent, mode]);
 
