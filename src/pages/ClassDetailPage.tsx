@@ -12,32 +12,25 @@ import {
   query,
   where,
   getDocs,
-  Timestamp,
-  addDoc,
 } from "firebase/firestore";
 import { auth, db } from "@/firebase/firebase";
 import {
   Button,
   Card,
   Tabs,
-  Table,
   message,
   Spin,
   Descriptions,
-  Tag,
   Space,
   Popconfirm,
   List,
   Select,
-  Input,
-  AutoComplete,
 } from "antd";
 import {
   UserOutlined,
   ScheduleOutlined,
   EditOutlined,
   DeleteOutlined,
-  CheckCircleOutlined,
   ArrowLeftOutlined,
   PlusOutlined,
   CalendarOutlined,
@@ -46,7 +39,7 @@ import ClassFormModal from "@/components/ClassFormModal";
 import ScheduleEventModal from "@/components/ScheduleEventModal";
 import { ToastContainer, toast } from "react-toastify";
 import moment from "moment";
-import { FORMAT_DATE, FORMAT_TIME_12H } from "@/constants";
+import { FORMAT_DATE } from "@/constants";
 
 const { TabPane } = Tabs;
 const { Option } = Select;
@@ -59,6 +52,8 @@ interface Student {
 }
 
 interface ScheduleEvent {
+  weeklyDays: any[];
+  monthlyDay: any;
   id: string;
   title: string;
   start: Date;
@@ -73,14 +68,14 @@ interface ScheduleEvent {
 // Helper để format recurrence info
 const formatRecurrenceInfo = (schedule: ScheduleEvent, recurringCount: number) => {
   if (schedule.recurrence === "weekly") {
-    const daysMap = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const daysMap = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
     const days = (schedule.weeklyDays || []).map((d: number) => daysMap[d]).join(", ");
-    return `Weekly (${days}) until ${moment(schedule.recurrenceEnd).format("MMM D, YYYY")} (${recurringCount} sessions)`;
+    return `Hàng tuần (${days}) đến hết ${moment(schedule.recurrenceEnd).format(FORMAT_DATE)} (${recurringCount} buổi)`;
   }
   if (schedule.recurrence === "monthly") {
-    return `Monthly (Day ${schedule.monthlyDay}) until ${moment(schedule.recurrenceEnd).format("MMM D, YYYY")} (${recurringCount} sessions)`;
+    return `Hàng tháng (Ngày ${schedule.monthlyDay}) đến hết ${moment(schedule.recurrenceEnd).format(FORMAT_DATE)} (${recurringCount} buổi)`;
   }
-  return "One time";
+  return "Một lần";
 };
 
 // Lấy số lượng bản ghi con (sessions) cho mỗi lịch gốc
@@ -684,7 +679,7 @@ function ClassDetailPage() {
             key="schedule"
           >
             <div className="mb-4 flex justify-between items-center">
-              <h3 className="text-lg font-medium">Schedule for {classData.name}</h3>
+              <h3 className="text-lg font-medium">Lịch học cho {classData.name}</h3>
               {userRole === "teacher" && classData.teacherId === userId && (
                 <Button
                   type="primary"
@@ -692,7 +687,7 @@ function ClassDetailPage() {
                   onClick={handleOpenScheduleModal}
                   className="font-semibold"
                 >
-                  Add Schedule
+                  Thêm lịch học
                 </Button>
               )}
             </div>
@@ -712,7 +707,7 @@ function ClassDetailPage() {
                         <div className="flex items-center space-x-3 mb-1">
                           <span className="flex items-center text-gray-700">
                             <CalendarOutlined className="mr-1" />
-                            {moment(schedule.start).format("MMM D, YYYY")}
+                            {moment(schedule.start).format(FORMAT_DATE)}
                           </span>
                           <span className="flex items-center text-gray-700">
                             <ScheduleOutlined className="mr-1" />
@@ -731,13 +726,13 @@ function ClassDetailPage() {
                         icon={<CalendarOutlined />}
                         size="small"
                         onClick={() => handleEditSchedule(schedule)}
-                        title="Edit schedule"
+                        title="Chỉnh sửa lịch học"
                       />
                       <Button
                         icon={<EditOutlined />}
                         size="small"
                         onClick={() => handleEditSchedule(schedule)}
-                        title="Edit schedule"
+                        title="Chỉnh sửa lịch học"
                       />
                       <Popconfirm
                         title="Xóa lịch học này và tất cả buổi lặp lại?"
@@ -751,7 +746,7 @@ function ClassDetailPage() {
                           icon={<DeleteOutlined />}
                           danger
                           size="small"
-                          title="Delete schedule"
+                          title="Xóa lịch học"
                         />
                       </Popconfirm>
                     </div>
