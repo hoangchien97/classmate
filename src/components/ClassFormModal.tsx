@@ -4,9 +4,10 @@ import { useEffect } from "react";
 interface ClassFormProps {
   visible: boolean;
   onClose: () => void;
-  onSave: (classData: { name: string }) => void;
+  onSave: (classData: { name: string; description: string }) => void;
   initialValues?: {
     name: string;
+    description?: string;
   };
   title: string;
 }
@@ -23,11 +24,11 @@ const ClassFormModal = ({
   // Reset form when modal is opened/closed
   useEffect(() => {
     if (visible) {
-      form.setFieldsValue(initialValues || { name: "" });
+      form.setFieldsValue(initialValues || { name: "", description: "" });
     }
   }, [visible, initialValues, form]);
 
-  const handleFinish = (values: any) => {
+  const handleFinish = (values: { name: string; description: string }) => {
     onSave(values);
   };
 
@@ -43,14 +44,21 @@ const ClassFormModal = ({
         form={form}
         layout="vertical"
         onFinish={handleFinish}
-        initialValues={initialValues || { name: "" }}
+        initialValues={initialValues || { name: "", description: "" }}
       >
         <Form.Item
           name="name"
-          label="Tên lớp học<span className='text-red-500'>*</span>"
+          label="Tên lớp học"
           rules={[{ required: true, message: "Vui lòng nhập tên lớp học" }]}
         >
           <Input placeholder="Nhập tên lớp học" />
+        </Form.Item>
+
+        <Form.Item
+          name="description"
+          label="Mô tả"
+        >
+          <Input.TextArea placeholder="Nhập mô tả cho lớp học" rows={3} />
         </Form.Item>
 
         <div className="flex justify-end space-x-2 mt-4">
