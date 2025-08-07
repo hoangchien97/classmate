@@ -1,110 +1,141 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { onAuthStateChanged } from "firebase/auth";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-  addDoc,
-  arrayUnion,
-  updateDoc,
-} from "firebase/firestore";
-import { auth, db } from "@/firebase/firebase";
+import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
+import { db } from "@/firebase/firebase";
 import {
   Button,
   Alert,
-  message,
   Spin,
   Card,
   List,
   Tag,
-  Modal,
-  Input,
+  Empty,
+  Typography,
+  Badge,
 } from "antd";
 import {
   PlusOutlined,
   CalendarOutlined,
   TeamOutlined,
-  RightOutlined,
+  BookOutlined,
+  ArrowRightOutlined,
 } from "@ant-design/icons";
 import ClassFormModal from "@/components/ClassFormModal";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/store";
+
+const { Title, Text } = Typography;
 
 function ClassesPage() {
-  const [userRole, setUserRole] = useState("");
-  const [userId, setUserId] = useState("");
+  const { userProfile } = useSelector((state: RootState) => state.user);
   const [classes, setClasses] = useState<any[]>([]);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showSearchModal, setShowSearchModal] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [scheduleCounts, setScheduleCounts] = useState<Record<string, number>>(
+    {}
+  );
   const navigate = useNavigate();
   const [showClassModal, setShowClassModal] = useState(false);
 
-  // Fetch classes for the user
-  const fetchClassesForUser = async (uid: string, role: string) => {
+  // Lấy số lượng lịch học gốc cho mỗi lớp
+  const getScheduleCount = async (classId: string) => {
     try {
+      const schedulesQuery = query(
+        collection(db, "schedules"),
+        where("classId", "==", classId)
+      );
+      const querySnapshot = await getDocs(schedulesQuery);
+
+      // Lọc chỉ lấy các bản ghi gốc (parentId === id)
+      const parentSchedules = querySnapshot.docs
+        .map((doc) => ({
+          id: doc.id,
+          parentId: doc.data().parentId || doc.id,
+        }))
+        .filter((schedule) => schedule.parentId === schedule.id);
+
+      return parentSchedules.length;
+    } catch (error) {
+      console.error(
+        `Error getting schedule count for class ${classId}:`,
+        error
+      );
+      return 0;
+    }
+  };
+
+  // Fetch số lượng lịch học cho tất cả các lớp
+  const fetchAllScheduleCounts = async (classItems: any[]) => {
+    const counts: Record<string, number> = {};
+
+    // Dùng Promise.all để fetch song song
+    await Promise.all(
+      classItems.map(async (classItem) => {
+        counts[classItem.id] = await getScheduleCount(classItem.id);
+      })
+    );
+
+    setScheduleCounts(counts);
+  };
+
+  // Fetch classes for the user
+  const fetchClassesForUser = async () => {
+    try {
+      // Nếu không có userProfile.id, không thể fetch lớp học
+      if (!userProfile.id) {
+        setLoading(false);
+        return;
+      }
+
       let classQuery;
-      if (role === "teacher") {
+      if (userProfile.role === "teacher") {
         classQuery = query(
           collection(db, "classes"),
-          where("teacherId", "==", uid)
+          where("teacherId", "==", userProfile.id)
         );
       } else {
         classQuery = query(
           collection(db, "classes"),
-          where("studentIds", "array-contains", uid)
+          where("studentIds", "array-contains", userProfile.id)
         );
       }
 
       const querySnapshot = await getDocs(classQuery);
-      const classesData = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        joinRequests: doc.data().joinRequests || [],
-      }));
+      const classesData = querySnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt ?? null,
+        };
+      });
 
       // Sort classes by creation date (newest first)
       classesData.sort((a, b) => {
-        return b.createdAt?.seconds - a.createdAt?.seconds;
+        return (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0);
       });
 
       setClasses(classesData);
+
+      // Sau khi có danh sách lớp, fetch số lịch học cho mỗi lớp
+      await fetchAllScheduleCounts(classesData);
     } catch (err: any) {
       setError("Lỗi khi tải danh sách lớp học: " + err.message);
       toast.error("Lỗi khi tải danh sách lớp học: " + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Gọi fetch classes khi component mount và khi userProfile thay đổi
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setUserId(user.uid);
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setUserRole(userData.role);
-          await fetchClassesForUser(user.uid, userData.role);
-        } else {
-          setError("Không tìm thấy thông tin người dùng.");
-          toast.error("Không tìm thấy thông tin người dùng.");
-          navigate("/login");
-        }
-      } else {
-        setError("Vui lòng đăng nhập để sử dụng tính năng này.");
-        toast.error("Vui lòng đăng nhập để sử dụng tính năng này.");
-        navigate("/login");
-      }
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [navigate]);
+    // Kiểm tra nếu người dùng đã đăng nhập (có userProfile.id)
+    if (!userProfile.id) return;
+    fetchClassesForUser();
+  }, [userProfile]);
 
   const handleCreateClass = async (classData: {
     name: string;
@@ -116,11 +147,17 @@ function ClassesPage() {
       return;
     }
 
+    if (!userProfile.id) {
+      setError("Không tìm thấy thông tin người dùng");
+      toast.error("Không tìm thấy thông tin người dùng");
+      return;
+    }
+
     try {
       const newClassData = {
         name: classData.name,
         description: classData.description || "",
-        teacherId: userId,
+        teacherId: userProfile.id,
         studentIds: [],
         joinRequests: [],
         schedule: [],
@@ -128,7 +165,15 @@ function ClassesPage() {
       };
 
       const docRef = await addDoc(collection(db, "classes"), newClassData);
-      setClasses([{ id: docRef.id, ...newClassData }, ...classes]);
+      const newClass = { id: docRef.id, ...newClassData };
+      setClasses([newClass, ...classes]);
+
+      // Cập nhật scheduleCounts với lớp mới (chưa có lịch học)
+      setScheduleCounts((prev) => ({
+        ...prev,
+        [docRef.id]: 0,
+      }));
+
       setShowClassModal(false);
       setError("");
       toast.success("Lớp học đã được tạo thành công!");
@@ -143,87 +188,38 @@ function ClassesPage() {
     navigate(`/classes/${classId}`);
   };
 
-  // Hàm xin tham gia lớp học
-  const handleJoinRequest = async (classId: string) => {
-    try {
-      const classRef = doc(db, "classes", classId);
-      const userDoc = await getDoc(doc(db, "users", userId));
-
-      if (!userDoc.exists()) {
-        setError("Không tìm thấy thông tin người dùng");
-        toast.error("Không tìm thấy thông tin người dùng");
-        return;
-      }
-
-      const userData = userDoc.data();
-
-      await updateDoc(classRef, {
-        joinRequests: arrayUnion({
-          studentId: userId,
-          studentName: userData.name || userData.email,
-          requestedAt: new Date(),
-        }),
-      });
-
-      // Cập nhật UI: xóa khỏi kết quả tìm kiếm
-      setSearchResults(searchResults.filter((c: any) => c.id !== classId));
-      setError("");
-      toast.success("Đã gửi yêu cầu tham gia lớp học thành công!");
-    } catch (err: any) {
-      setError("Lỗi khi gửi yêu cầu tham gia: " + err.message);
-      toast.error("Lỗi khi gửi yêu cầu tham gia: " + err.message);
-    }
-  };
-
-  // Thêm hàm searchClasses vào component ClassesPage
-  const searchClasses = async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    try {
-      // Tìm kiếm lớp học theo tên, chuyển đổi cả query và tên lớp về chữ thường để so sánh
-      const classesRef = collection(db, "classes");
-      const allClassesQuery = await getDocs(classesRef);
-
-      const results = allClassesQuery.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter(
-          (classItem) =>
-            // So sánh cả tên lớp và mô tả (nếu có)
-            classItem.name.toLowerCase().includes(query.toLowerCase()) ||
-            (classItem.description &&
-              classItem.description.toLowerCase().includes(query.toLowerCase()))
-        )
-        // Lọc ra những lớp mà học sinh chưa tham gia và chưa gửi yêu cầu
-        .filter(
-          (classItem) =>
-            !classItem.studentIds?.includes(userId) &&
-            !classItem.joinRequests?.some(
-              (req: any) => req.studentId === userId
-            )
-        );
-
-      setSearchResults(results);
-    } catch (error: any) {
-      setError("Lỗi khi tìm kiếm lớp học: " + error.message);
-      toast.error("Lỗi khi tìm kiếm lớp học: " + error.message);
-    }
-  };
-
   if (loading) {
-    return <Spin tip="Đang tải..." style={{ width: "100%", marginTop: 100 }} />;
+    return (
+      <div
+        className="flex justify-center items-center h-full"
+        style={{ minHeight: "60vh" }}
+      >
+        <Spin tip="Đang tải danh sách lớp học..." size="large" />
+      </div>
+    );
   }
 
   return (
     <div className="container mx-auto p-4">
       <ToastContainer />
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Lớp học của tôi</h1>
-        {userRole === "teacher" && (
+
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div>
+          <Title level={2} style={{ margin: 0 }}>
+            Lớp học của tôi
+          </Title>
+          <div className="flex items-center gap-2 mt-2">
+            <Text>{userProfile.name}</Text>
+            <Tag color={userProfile.role === "teacher" ? "blue" : "green"}>
+              {userProfile.role === "teacher" ? "Giáo viên" : "Học viên"}
+            </Tag>
+          </div>
+        </div>
+
+        {userProfile.role === "teacher" && (
           <Button
             type="primary"
+            size="large"
             icon={<PlusOutlined />}
             onClick={() => setShowClassModal(true)}
           >
@@ -238,91 +234,164 @@ function ClassesPage() {
           message={error}
           showIcon
           style={{ marginBottom: 16 }}
+          closable
+          onClose={() => setError("")}
         />
-      )}
-
-      {userRole === "student" && (
-        <div className="mb-4">
-          <Button type="primary" onClick={() => setShowSearchModal(true)}>
-            Tìm kiếm lớp học mới
-          </Button>
-        </div>
       )}
 
       {/* Class listing */}
       <div className="mb-8">
         {classes.length === 0 ? (
-          <Card className="text-center py-8">
-            <p className="text-gray-500 mb-4">Bạn chưa có lớp học nào</p>
-            {userRole === "student" ? (
-              <Button type="primary" onClick={() => setShowSearchModal(true)}>
-                Tìm kiếm lớp học
-              </Button>
-            ) : (
-              <Button type="primary" onClick={() => setShowClassModal(true)}>
-                Tạo lớp học mới
-              </Button>
-            )}
-          </Card>
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={
+              <div className="text-center py-8">
+                <p className="text-gray-500 mb-4 text-lg">
+                  Bạn chưa có lớp học nào
+                </p>
+                {userProfile.role === "teacher" && (
+                  <Button
+                    type="primary"
+                    onClick={() => setShowClassModal(true)}
+                  >
+                    Tạo lớp học mới
+                  </Button>
+                )}
+              </div>
+            }
+          />
         ) : (
           <List
             grid={{
-              gutter: 16,
+              gutter: 24,
               xs: 1,
-              sm: 1,
+              sm: 2,
               md: 2,
               lg: 3,
-              xl: 3,
+              xl: 4,
               xxl: 4,
             }}
             dataSource={classes}
             renderItem={(classItem) => {
-              // Đếm số lượng lịch học đúng parentId
-              const schedules = Array.isArray(classItem.schedule)
-                ? classItem.schedule
-                : [];
-              const scheduleCount = schedules.filter(
-                (sch: any) => sch.parentId === classItem.id
-              ).length;
+              // Số lượng học sinh
+              const studentCount = classItem.studentIds?.length || 0;
+
+              // Lấy số lượng lịch học từ state scheduleCounts
+              const scheduleCount = scheduleCounts[classItem.id] || 0;
 
               return (
                 <List.Item>
                   <Card
                     hoverable
-                    title={
-                      <span>
-                        {classItem.name}
+                    className="h-full flex flex-col"
+                    style={{
+                      borderRadius: "8px",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.09)",
+                    }}
+                    cover={
+                      <div
+                        style={{
+                          height: "80px",
+                          background:
+                            "linear-gradient(135deg, #1677ff 0%, #4096ff 100%)",
+                          borderTopLeftRadius: "8px",
+                          borderTopRightRadius: "8px",
+                          padding: "16px",
+                          position: "relative",
+                        }}
+                      >
+                        <BookOutlined
+                          style={{
+                            fontSize: "24px",
+                            color: "white",
+                            position: "absolute",
+                            right: "16px",
+                            top: "16px",
+                          }}
+                        />
+                        <h3
+                          style={{
+                            color: "white",
+                            fontSize: "18px",
+                            fontWeight: "bold",
+                            margin: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {classItem.name}
+                        </h3>
                         <Tag
                           color={
-                            userRole === "teacher" ? "blue" : "green"
+                            userProfile.role === "teacher" ? "blue" : "green"
                           }
-                          style={{ marginLeft: 8 }}
+                          style={{
+                            marginTop: "8px",
+                            backgroundColor: "rgba(255, 255, 255, 0.2)",
+                            color: "white",
+                            border: "none",
+                          }}
                         >
-                          {userRole === "teacher" ? "Giảng dạy" : "Đang học"}
+                          {userProfile.role === "teacher"
+                            ? "Giảng dạy"
+                            : "Đang học"}
                         </Tag>
-                      </span>
+                      </div>
                     }
-                    onClick={() => navigateToClassDetail(classItem.id)}
-                    actions={[
-                      <div key="students" className="flex items-center justify-center">
-                        <TeamOutlined />
-                        <span className="ml-2">
-                          {classItem.studentIds?.length || 0} học sinh
-                        </span>
-                      </div>,
-                      <div key="schedule" className="flex items-center justify-center">
-                        <CalendarOutlined />
-                        <span className="ml-2">
-                          {scheduleCount > 0
-                            ? `${scheduleCount} lịch học`
-                            : "Chưa có lịch"}
-                        </span>
-                      </div>,
-                    ]}
+                    bodyStyle={{
+                      padding: "16px",
+                      flex: "1",
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
                   >
-                    <div className="h-16 overflow-hidden text-gray-500">
-                      {classItem.description || "Không có mô tả"}
+                    <div
+                      style={{
+                        flex: 1,
+                        minHeight: "60px",
+                        marginBottom: "16px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <Text type="secondary" ellipsis={{ rows: 3 }}>
+                        {classItem.description || "Không có mô tả"}
+                      </Text>
                     </div>
+
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <Badge
+                        count={studentCount}
+                        overflowCount={999}
+                        style={{ backgroundColor: "#52c41a" }}
+                      >
+                        <div className="flex items-center gap-2 bg-gray-50 rounded p-2">
+                          <TeamOutlined style={{ color: "#52c41a" }} />
+                          <Text>Học sinh</Text>
+                        </div>
+                      </Badge>
+
+                      <Badge
+                        count={scheduleCount}
+                        overflowCount={999}
+                        style={{ backgroundColor: "#1677ff" }}
+                        showZero
+                      >
+                        <div className="flex items-center gap-2 bg-gray-50 rounded p-2">
+                          <CalendarOutlined style={{ color: "#1677ff" }} />
+                          <Text>Lịch học</Text>
+                        </div>
+                      </Badge>
+                    </div>
+
+                    <Button
+                      type="primary"
+                      block
+                      icon={<ArrowRightOutlined />}
+                      onClick={() => navigateToClassDetail(classItem.id)}
+                    >
+                      Xem chi tiết
+                    </Button>
                   </Card>
                 </List.Item>
               );
@@ -338,48 +407,6 @@ function ClassesPage() {
         onSave={handleCreateClass}
         title="Tạo lớp học mới"
       />
-
-      {/* Search modal - can be moved to a separate component */}
-      <Modal
-        title="Tìm kiếm lớp học"
-        open={showSearchModal}
-        onCancel={() => setShowSearchModal(false)}
-        footer={null}
-      >
-        <Input.Search
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onSearch={searchClasses}
-          placeholder="Nhập tên lớp học"
-          enterButton="Tìm"
-        />
-        <div style={{ marginTop: 16 }}>
-          {searchResults.length > 0 ? (
-            <List
-              dataSource={searchResults}
-              renderItem={(classItem) => (
-                <List.Item
-                  actions={[
-                    <Button
-                      type="primary"
-                      onClick={() => handleJoinRequest(classItem.id)}
-                    >
-                      Xin tham gia
-                    </Button>,
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={classItem.name}
-                    description={classItem.description || "Không có mô tả"}
-                  />
-                </List.Item>
-              )}
-            />
-          ) : (
-            <div style={{ color: "#888" }}>Không có kết quả tìm kiếm</div>
-          )}
-        </div>
-      </Modal>
     </div>
   );
 }

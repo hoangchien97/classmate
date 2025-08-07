@@ -4,7 +4,6 @@ import MainLayout from "../layouts/MainLayout";
 import LoginPage from "../pages/LoginPage";
 import RegisterPage from "../pages/RegisterPage";
 import ProtectedRoute from "../components/ProtectedRoute";
-import CheckinPage from "@/pages/CheckinPage";
 import ProfilePage from "@/pages/ProfilePage";
 import SchedulePage from "@/pages/SchedulePage";
 import ClassesPage from "@/pages/ClassesPage";
@@ -32,7 +31,6 @@ function Routes() {
       children: [
         { path: "classes", element: <ClassesPage /> },
         { path: "classes/:classId", element: <ClassDetailPage /> }, // Add this route
-        { path: "classes/:classId/checkin", element: <CheckinPage /> },
         { path: "schedule", element: <SchedulePage /> },
         { path: "profile", element: <ProfilePage /> },
         { path: "/", element: <Navigate to="/classes" replace /> },
