@@ -11,10 +11,12 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
+    "@ant-design/v5-patch-for-react-19": "^1.0.3",
     "@fullcalendar/daygrid": "^6.1.18",
     "@fullcalendar/interaction": "^6.1.18",
     "@fullcalendar/react": "^6.1.18",
     "@fullcalendar/timegrid": "^6.1.18",
+    "@reduxjs/toolkit": "^2.8.2",
     "@yudiel/react-qr-scanner": "^2.3.1",
     "antd": "^5.26.7",
     "dayjs": "^1.11.13",
@@ -26,6 +28,7 @@
     "react-big-calendar": "^1.19.4",
     "react-dom": "^19.1.0",
     "react-hot-toast": "^2.5.2",
+    "react-redux": "^9.2.0",
     "react-router-dom": "^7.7.1",
     "react-toastify": "^11.0.5"
   },

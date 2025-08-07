@@ -93,12 +93,12 @@ function ClassesPage() {
           await fetchClassesForUser(user.uid, userData.role);
         } else {
           setError("Không tìm thấy thông tin người dùng.");
-          message.error("Không tìm thấy thông tin người dùng.");
+          toast.error("Không tìm thấy thông tin người dùng.");
           navigate("/login");
         }
       } else {
         setError("Vui lòng đăng nhập để sử dụng tính năng này.");
-        message.error("Vui lòng đăng nhập để sử dụng tính năng này.");
+        toast.error("Vui lòng đăng nhập để sử dụng tính năng này.");
         navigate("/login");
       }
       setLoading(false);
@@ -276,46 +276,57 @@ function ClassesPage() {
               xxl: 4,
             }}
             dataSource={classes}
-            renderItem={(classItem) => (
-              <List.Item>
-                <Card
-                  hoverable
-                  title={classItem.name}
-                  extra={
-                    <Tag color={userRole === "teacher" ? "blue" : "green"}>
-                      {userRole === "teacher" ? "Giảng dạy" : "Đang học"}
-                    </Tag>
-                  }
-                  onClick={() => navigateToClassDetail(classItem.id)}
-                  actions={[
-                    <div
-                      key="students"
-                      className="flex items-center justify-center"
-                    >
-                      <TeamOutlined />
-                      <span className="ml-2">
-                        {classItem.studentIds?.length || 0} học sinh
+            renderItem={(classItem) => {
+              // Đếm số lượng lịch học đúng parentId
+              const schedules = Array.isArray(classItem.schedule)
+                ? classItem.schedule
+                : [];
+              const scheduleCount = schedules.filter(
+                (sch: any) => sch.parentId === classItem.id
+              ).length;
+
+              return (
+                <List.Item>
+                  <Card
+                    hoverable
+                    title={
+                      <span>
+                        {classItem.name}
+                        <Tag
+                          color={
+                            userRole === "teacher" ? "blue" : "green"
+                          }
+                          style={{ marginLeft: 8 }}
+                        >
+                          {userRole === "teacher" ? "Giảng dạy" : "Đang học"}
+                        </Tag>
                       </span>
-                    </div>,
-                    <div
-                      key="schedule"
-                      className="flex items-center justify-center"
-                    >
-                      <CalendarOutlined />
-                      <span className="ml-2">
-                        {classItem.schedule?.length
-                          ? `${classItem.schedule.length} lịch học`
-                          : "Chưa có lịch"}
-                      </span>
-                    </div>,
-                  ]}
-                >
-                  <div className="h-16 overflow-hidden text-gray-500">
-                    {classItem.description || "Không có mô tả"}
-                  </div>
-                </Card>
-              </List.Item>
-            )}
+                    }
+                    onClick={() => navigateToClassDetail(classItem.id)}
+                    actions={[
+                      <div key="students" className="flex items-center justify-center">
+                        <TeamOutlined />
+                        <span className="ml-2">
+                          {classItem.studentIds?.length || 0} học sinh
+                        </span>
+                      </div>,
+                      <div key="schedule" className="flex items-center justify-center">
+                        <CalendarOutlined />
+                        <span className="ml-2">
+                          {scheduleCount > 0
+                            ? `${scheduleCount} lịch học`
+                            : "Chưa có lịch"}
+                        </span>
+                      </div>,
+                    ]}
+                  >
+                    <div className="h-16 overflow-hidden text-gray-500">
+                      {classItem.description || "Không có mô tả"}
+                    </div>
+                  </Card>
+                </List.Item>
+              );
+            }}
           />
         )}
       </div>

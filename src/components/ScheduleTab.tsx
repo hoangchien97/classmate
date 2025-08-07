@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { doc, deleteDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/firebase/firebase";
 import { Button, Popconfirm, message, Tooltip } from "antd";
-import { CalendarOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ScheduleOutlined } from "@ant-design/icons";
+import { CalendarOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ScheduleOutlined, ClockCircleTwoTone, ClockCircleOutlined } from "@ant-design/icons";
 import ScheduleEventModal from "@/components/ScheduleEventModal";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
@@ -297,7 +297,7 @@ function ScheduleTab({ classId, userRole, userId, classData, onShowMessage }: Sc
                         {dayjs(schedule.start).format(FORMAT_DATE)}
                       </span>
                       <span className={`flex items-center ${statusConfig.iconColor}`}>
-                        <ScheduleOutlined className="mr-1" />
+                        <ClockCircleOutlined className="mr-1" />
                         {dayjs(schedule.start).format("HH:mm")} - {dayjs(schedule.end).format("HH:mm")}
                       </span>
                       <span>

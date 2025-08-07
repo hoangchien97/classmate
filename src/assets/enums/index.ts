@@ -19,4 +19,8 @@ enum ClassStatus {
   INACTIVE = "inactive",
 }
 
-export { DayOfWeek, RecurrenceType, ClassStatus };
+enum UserRole {
+  STUDENT = "student",
+  TEACHER = "teacher",
+}
+export { DayOfWeek, RecurrenceType, ClassStatus, UserRole };
