@@ -5,6 +5,7 @@ import { db } from "@/firebase/firebase";
 import { Button, Popconfirm, message, Tooltip } from "antd";
 import { CalendarOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ScheduleOutlined, ClockCircleTwoTone, ClockCircleOutlined } from "@ant-design/icons";
 import ScheduleEventModal from "@/components/ScheduleEventModal";
+import CheckinModal from "@/components/CheckinModal";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import isBetween from "dayjs/plugin/isBetween";
@@ -35,8 +36,11 @@ interface ScheduleTabProps {
   userRole: string;
   userId: string;
   classData: {
+    id: string;
     name: string;
     teacherId: string;
+    studentIds?: string[];
+    [key: string]: any;
   };
   onShowMessage?: (type: 'success' | 'error', message: string) => void;
 }
@@ -135,6 +139,17 @@ function ScheduleTab({ classId, userRole, userId, classData, onShowMessage }: Sc
   const [selectedSchedule, setSelectedSchedule] = useState<ScheduleEvent | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showCheckinModal, setShowCheckinModal] = useState(false);
+  const [checkinSchedule, setCheckinSchedule] = useState<ScheduleEvent | null>(null);
+  const handleOpenCheckinModal = (schedule: ScheduleEvent) => {
+    setCheckinSchedule(schedule);
+    setShowCheckinModal(true);
+  };
+
+  const handleCloseCheckinModal = () => {
+    setShowCheckinModal(false);
+    setCheckinSchedule(null);
+  };
 
   useEffect(() => {
     fetchClassSchedules();
@@ -319,6 +334,12 @@ function ScheduleTab({ classId, userRole, userId, classData, onShowMessage }: Sc
                       onClick={() => handleEditSchedule(schedule)}
                       title="Chỉnh sửa lịch học"
                     />
+                    <Button
+                      icon={<ScheduleOutlined />}
+                      size="small"
+                      onClick={() => handleOpenCheckinModal(schedule)}
+                      title="Điểm danh"
+                    />
                     <Popconfirm
                       title="Xóa lịch học này và tất cả buổi lặp lại?"
                       description="Hành động này sẽ xóa cả các buổi lặp lại liên quan. Bạn có chắc chắn?"
@@ -362,6 +383,17 @@ function ScheduleTab({ classId, userRole, userId, classData, onShowMessage }: Sc
           userClasses={[classData]}
           selectedEvent={selectedSchedule}
           onRefreshEvents={handleRefreshSchedules}
+        />
+      )}
+
+      {/* Checkin Modal */}
+      {showCheckinModal && checkinSchedule && (
+        <CheckinModal
+          open={showCheckinModal}
+          onClose={handleCloseCheckinModal}
+          schedule={checkinSchedule}
+          classId={classId}
+          classData={classData}
         />
       )}
     </div>
