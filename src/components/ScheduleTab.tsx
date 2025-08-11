@@ -3,8 +3,7 @@ import { useState, useEffect } from "react";
 import { doc, deleteDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/firebase/firebase";
 import { Button, Popconfirm, message, Tooltip } from "antd";
-import { toast } from "react-toastify";
-import { CalendarOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ScheduleOutlined, ClockCircleTwoTone, ClockCircleOutlined } from "@ant-design/icons";
+import { CalendarOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ScheduleOutlined, ClockCircleOutlined } from "@ant-design/icons";
 import ScheduleEventModal from "@/components/ScheduleEventModal";
 import CheckinModal from "@/components/CheckinModal";
 import { getSessionDates } from "@/components/CheckinModal";
@@ -12,8 +11,11 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import isBetween from "dayjs/plugin/isBetween";
 import "dayjs/locale/vi";
+
 import { FORMAT_DATE } from "@/constants";
 import { RecurrenceType } from "@/assets/enums";
+import { ScheduleStatus } from "@/assets/enums/schedule";
+import type { StatusConfig } from "@/assets/enums/schedule";
 
 dayjs.extend(relativeTime);
 dayjs.extend(isBetween);
@@ -43,7 +45,7 @@ interface ScheduleTabProps {
     name: string;
     teacherId: string;
     studentIds?: string[];
-    [key: string]: any;
+    // [key: string]: any; // Removed for type safety
   };
   onShowMessage?: (type: 'success' | 'error', message: string) => void;
 }
@@ -62,8 +64,9 @@ const formatRecurrenceInfo = (schedule: ScheduleEvent, recurringCount: number) =
   return "";
 };
 
+
 // Helper để kiểm tra status của schedule, thêm trạng thái 'today' nếu có session hôm nay
-const getScheduleStatus = (schedule: ScheduleEvent) => {
+const getScheduleStatus = (schedule: ScheduleEvent): ScheduleStatus => {
   const now = dayjs();
   const startTime = dayjs(schedule.start);
   const endTime = schedule.recurrenceEnd ? dayjs(schedule.recurrenceEnd) : dayjs(schedule.end);
@@ -75,32 +78,31 @@ const getScheduleStatus = (schedule: ScheduleEvent) => {
 
   // Nếu có session diễn ra hôm nay
   if (sessionDates.some(date => dayjs(date).isSame(now, 'day'))) {
-    return 'today';
+    return ScheduleStatus.TODAY;
   }
 
   // Kiểm tra nếu đang trong thời gian diễn ra
   if (now.isBetween(startTime, endTime, null, '[]')) {
-    return 'ongoing';
+    return ScheduleStatus.ONGOING;
   }
 
   // Kiểm tra nếu sắp diễn ra (trong vòng 24 giờ tới)
   if (startTime.isAfter(now) && startTime.diff(now, 'hours') <= 24) {
-    return 'upcoming';
+    return ScheduleStatus.UPCOMING;
   }
 
   // Kiểm tra nếu đã kết thúc
   if (endTime.isBefore(now)) {
-    return 'completed';
+    return ScheduleStatus.COMPLETED;
   }
 
   // Còn lại là scheduled (đã lên lịch nhưng chưa tới)
-  return 'scheduled';
+  return ScheduleStatus.SCHEDULED;
 };
 
-// Helper để lấy style cho status badge, thêm style cho 'today'
-const getStatusConfig = (status: string) => {
+const getStatusConfig = (status: ScheduleStatus): StatusConfig => {
   switch (status) {
-    case 'today':
+    case ScheduleStatus.TODAY:
       return {
         text: 'Diễn ra ngày hôm nay',
         className: 'bg-lime-100 text-lime-800 border-lime-200',
@@ -108,7 +110,7 @@ const getStatusConfig = (status: string) => {
         cardBorder: 'border-lime-200',
         leftBorder: 'bg-lime-500'
       };
-    case 'ongoing':
+    case ScheduleStatus.ONGOING:
       return {
         text: 'Đang diễn ra',
         className: 'bg-green-100 text-green-800 border-green-200',
@@ -116,7 +118,7 @@ const getStatusConfig = (status: string) => {
         cardBorder: 'border-green-200',
         leftBorder: 'bg-green-500'
       };
-    case 'upcoming':
+    case ScheduleStatus.UPCOMING:
       return {
         text: 'Sắp diễn ra',
         className: 'bg-orange-100 text-orange-800 border-orange-200',
@@ -124,7 +126,7 @@ const getStatusConfig = (status: string) => {
         cardBorder: 'border-orange-200',
         leftBorder: 'bg-orange-500'
       };
-    case 'completed':
+    case ScheduleStatus.COMPLETED:
       return {
         text: 'Đã kết thúc',
         className: 'bg-gray-100 text-gray-600 border-gray-200',
@@ -306,29 +308,80 @@ function ScheduleTab({ classId, userRole, userId, classData, onShowMessage }: Sc
                 key={schedule.id}
                 className={`bg-white border rounded-lg px-6 py-4 shadow-sm group hover:shadow-md transition-shadow duration-200 ${statusConfig.cardBorder}`}
               >
-                <div className="flex items-start justify-between w-full">
-                  <div className="flex items-center">
-                    <div className={`w-1 h-12 ${statusConfig.leftBorder} rounded mr-4`} />
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <div className="font-semibold text-lg text-left">{schedule.title}</div>
-                        <Tooltip
-                          title={
-                            status === "upcoming"
-                              ? `Bắt đầu sau ${dayjs(schedule.start).fromNow()}`
-                              : status === "ongoing"
-                              ? `Kết thúc ${dayjs(schedule.recurrenceEnd || schedule.end).fromNow()}`
-                              : undefined
-                          }
-                          placement="top"
-                        >
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${statusConfig.className}`}>
-                            {statusConfig.text}
-                          </span>
-                        </Tooltip>
+                <div className="flex flex-row items-center w-full">
+                  {/* Left border for both rows */}
+                  <div className={`w-1 h-12 rounded ${statusConfig.leftBorder} mr-4`} />
+                  <div className="flex flex-col flex-1 min-w-0">
+                    {/* Row 1: Title + status + actions */}
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="font-semibold text-lg text-left truncate max-w-xs">{schedule.title}</div>
+                          <Tooltip
+                            title={
+                              status === ScheduleStatus.UPCOMING
+                                ? `Bắt đầu sau ${dayjs(schedule.start).fromNow()}`
+                                : status === ScheduleStatus.ONGOING
+                                ? `Kết thúc ${dayjs(schedule.recurrenceEnd || schedule.end).fromNow()}`
+                                : undefined
+                            }
+                            placement="top"
+                          >
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium border ${statusConfig.className}`}>
+                              {statusConfig.text}
+                            </span>
+                          </Tooltip>
+                        </div>
                       </div>
-                      <div className="text-gray-500 text-sm mb-1 text-left">{classData.name}</div>
-                      <div className="flex items-center space-x-3">
+                      {/* Action buttons - only show on hover */}
+                      <div className="flex items-center space-x-2 ml-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        {userRole === "teacher" && classData.teacherId === userId && (
+                          <>
+                            <Button
+                              icon={<EditOutlined />}
+                              size="small"
+                              onClick={() => handleEditSchedule(schedule)}
+                              title="Chỉnh sửa lịch học"
+                            />
+                            <Button
+                              icon={<ScheduleOutlined className="text-lime-600" />}
+                              size="small"
+                              onClick={() => handleOpenCheckinModal(schedule)}
+                              title="Điểm danh"
+                              style={{ color: '#65a30d' }}
+                            />
+                            <Popconfirm
+                              title="Xóa lịch học này và tất cả buổi lặp lại?"
+                              description="Hành động này sẽ xóa cả các buổi lặp lại liên quan. Bạn có chắc chắn?"
+                              onConfirm={() => handleDeleteSchedule(schedule)}
+                              okText="Xóa"
+                              cancelText="Hủy"
+                              okType="danger"
+                            >
+                              <Button
+                                icon={<DeleteOutlined />}
+                                danger
+                                size="small"
+                                title="Xóa lịch học"
+                              />
+                            </Popconfirm>
+                          </>
+                        )}
+                        {userRole !== "teacher" && (
+                          <Button
+                            icon={<ScheduleOutlined className="text-lime-600" />}
+                            size="small"
+                            onClick={() => handleOpenCheckinModal(schedule)}
+                            title="Xem điểm danh"
+                            style={{ color: '#65a30d' }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                    {/* Row 2: Class name and time info (full width) */}
+                    <div className="mt-2 flex flex-wrap items-center gap-4 w-full">
+                      <div className="text-gray-500 text-sm text-left min-w-0 truncate">{classData.name}</div>
+                      <div className="flex items-center space-x-3 flex-wrap">
                         <span className={`flex items-center ${statusConfig.iconColor}`}>
                           <CalendarOutlined className="mr-1" />
                           {dayjs(schedule.start).format(FORMAT_DATE)}
@@ -346,51 +399,6 @@ function ScheduleTab({ classId, userRole, userId, classData, onShowMessage }: Sc
                         )}
                       </div>
                     </div>
-                  </div>
-                  {/* Action buttons - only show on hover */}
-                  <div className="flex items-center space-x-2 ml-4 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                    {userRole === "teacher" && classData.teacherId === userId && (
-                      <>
-                        <Button
-                          icon={<EditOutlined />}
-                          size="small"
-                          onClick={() => handleEditSchedule(schedule)}
-                          title="Chỉnh sửa lịch học"
-                        />
-                        <Button
-                          icon={<ScheduleOutlined className="text-lime-600" />}
-                          size="small"
-                          onClick={() => handleOpenCheckinModal(schedule)}
-                          title="Điểm danh"
-                          style={{ color: '#65a30d' }}
-                        />
-                        <Popconfirm
-                          title="Xóa lịch học này và tất cả buổi lặp lại?"
-                          description="Hành động này sẽ xóa cả các buổi lặp lại liên quan. Bạn có chắc chắn?"
-                          onConfirm={() => handleDeleteSchedule(schedule)}
-                          okText="Xóa"
-                          cancelText="Hủy"
-                          okType="danger"
-                        >
-                          <Button
-                            icon={<DeleteOutlined />}
-                            danger
-                            size="small"
-                            title="Xóa lịch học"
-                          />
-                        </Popconfirm>
-                      </>
-                    )}
-                    {/* Student and other roles: chỉ xem checkin */}
-                    {userRole !== "teacher" && (
-                      <Button
-                        icon={<ScheduleOutlined className="text-lime-600" />}
-                        size="small"
-                        onClick={() => handleOpenCheckinModal(schedule)}
-                        title="Xem điểm danh"
-                        style={{ color: '#65a30d' }}
-                      />
-                    )}
                   </div>
                 </div>
               </div>
