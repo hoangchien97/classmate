@@ -3,14 +3,17 @@ import { useState, useEffect } from "react";
 import { doc, deleteDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/firebase/firebase";
 import { Button, Popconfirm, message, Tooltip } from "antd";
+import { toast } from "react-toastify";
 import { CalendarOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ScheduleOutlined, ClockCircleTwoTone, ClockCircleOutlined } from "@ant-design/icons";
 import ScheduleEventModal from "@/components/ScheduleEventModal";
 import CheckinModal from "@/components/CheckinModal";
+import { getSessionDates } from "@/components/CheckinModal";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import isBetween from "dayjs/plugin/isBetween";
 import "dayjs/locale/vi";
 import { FORMAT_DATE } from "@/constants";
+import { RecurrenceType } from "@/assets/enums";
 
 dayjs.extend(relativeTime);
 dayjs.extend(isBetween);
@@ -47,46 +50,64 @@ interface ScheduleTabProps {
 
 // Helper để format recurrence info
 const formatRecurrenceInfo = (schedule: ScheduleEvent, recurringCount: number) => {
-  if (schedule.recurrence === "weekly") {
+  if (schedule.recurrence === RecurrenceType.WEEKLY) {
     const daysMap = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
     const days = (schedule.weeklyDays || []).map((d: number) => daysMap[d]).join(", ");
     return `Hàng tuần (${days}) đến hết ${dayjs(schedule.recurrenceEnd).format(FORMAT_DATE)} (${recurringCount} buổi)`;
   }
-  if (schedule.recurrence === "monthly") {
+  if (schedule.recurrence === RecurrenceType.MONTHLY) {
     return `Hàng tháng (Ngày ${schedule.monthlyDay}) đến hết ${dayjs(schedule.recurrenceEnd).format(FORMAT_DATE)} (${recurringCount} buổi)`;
   }
-  return "Một lần";
+  // Nếu không lặp thì không trả về tag gì cả
+  return "";
 };
 
-// Helper để kiểm tra status của schedule
+// Helper để kiểm tra status của schedule, thêm trạng thái 'today' nếu có session hôm nay
 const getScheduleStatus = (schedule: ScheduleEvent) => {
-    const now = dayjs();
-    const startTime = dayjs(schedule.start);
-    // Nếu có recurrenceEnd thì lấy recurrenceEnd, không thì lấy end
-    const endTime = schedule.recurrenceEnd ? dayjs(schedule.recurrenceEnd) : dayjs(schedule.end);
+  const now = dayjs();
+  const startTime = dayjs(schedule.start);
+  const endTime = schedule.recurrenceEnd ? dayjs(schedule.recurrenceEnd) : dayjs(schedule.end);
 
-    // Kiểm tra nếu đang trong thời gian diễn ra
-    if (now.isBetween(startTime, endTime, null, '[]')) {
-        return 'ongoing';
-    }
+  // Lấy tất cả các ngày diễn ra session
+  const sessionDates = (typeof schedule.start === 'object' && schedule.recurrence)
+    ? getSessionDates(schedule)
+    : [schedule.start];
 
-    // Kiểm tra nếu sắp diễn ra (trong vòng 24 giờ tới)
-    if (startTime.isAfter(now) && startTime.diff(now, 'hours') <= 24) {
-        return 'upcoming';
-    }
+  // Nếu có session diễn ra hôm nay
+  if (sessionDates.some(date => dayjs(date).isSame(now, 'day'))) {
+    return 'today';
+  }
 
-    // Kiểm tra nếu đã kết thúc
-    if (endTime.isBefore(now)) {
-        return 'completed';
-    }
+  // Kiểm tra nếu đang trong thời gian diễn ra
+  if (now.isBetween(startTime, endTime, null, '[]')) {
+    return 'ongoing';
+  }
 
-    // Còn lại là scheduled (đã lên lịch nhưng chưa tới)
-    return 'scheduled';
+  // Kiểm tra nếu sắp diễn ra (trong vòng 24 giờ tới)
+  if (startTime.isAfter(now) && startTime.diff(now, 'hours') <= 24) {
+    return 'upcoming';
+  }
+
+  // Kiểm tra nếu đã kết thúc
+  if (endTime.isBefore(now)) {
+    return 'completed';
+  }
+
+  // Còn lại là scheduled (đã lên lịch nhưng chưa tới)
+  return 'scheduled';
 };
 
-// Helper để lấy style cho status badge
+// Helper để lấy style cho status badge, thêm style cho 'today'
 const getStatusConfig = (status: string) => {
   switch (status) {
+    case 'today':
+      return {
+        text: 'Diễn ra ngày hôm nay',
+        className: 'bg-lime-100 text-lime-800 border-lime-200',
+        iconColor: 'text-lime-600',
+        cardBorder: 'border-lime-200',
+        leftBorder: 'bg-lime-500'
+      };
     case 'ongoing':
       return {
         text: 'Đang diễn ra',
@@ -192,7 +213,7 @@ function ScheduleTab({ classId, userRole, userId, classData, onShowMessage }: Sc
             description: data.description || "",
             classId: data.classId,
             teacherId: data.teacherId,
-            recurrence: data.recurrence || "none",
+            recurrence: data.recurrence || RecurrenceType.NONE,
             recurrenceEnd: data.recurrenceEnd ? data.recurrenceEnd.toDate() : null,
             parentId: data.parentId || doc.id,
             weeklyDays: data.weeklyDays || [],
@@ -280,83 +301,98 @@ function ScheduleTab({ classId, userRole, userId, classData, onShowMessage }: Sc
           {parentSchedules.map((schedule) => {
             const status = getScheduleStatus(schedule);
             const statusConfig = getStatusConfig(status);
-            
             return (
               <div
                 key={schedule.id}
-                className={`flex items-center justify-between bg-white border rounded-lg px-6 py-4 shadow-sm group hover:shadow-md transition-shadow duration-200 ${statusConfig.cardBorder}`}
+                className={`bg-white border rounded-lg px-6 py-4 shadow-sm group hover:shadow-md transition-shadow duration-200 ${statusConfig.cardBorder}`}
               >
-                <div className="flex items-center">
-                  <div className={`w-1 h-12 ${statusConfig.leftBorder} rounded mr-4`} />
-                  <div>
-                    <div className="flex items-center gap-3">
-                      <div className="font-semibold text-lg text-left">{schedule.title}</div>
-                      <Tooltip
-                        title={
-                          status === "upcoming"
-                            ? `Bắt đầu sau ${dayjs(schedule.start).fromNow()}`
-                            : status === "ongoing"
-                            ? `Kết thúc ${dayjs(schedule.recurrenceEnd || schedule.end).fromNow()}`
-                            : undefined
-                        }
-                        placement="top"
-                      >
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium border ${statusConfig.className}`}>
-                          {statusConfig.text}
+                <div className="flex items-start justify-between w-full">
+                  <div className="flex items-center">
+                    <div className={`w-1 h-12 ${statusConfig.leftBorder} rounded mr-4`} />
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <div className="font-semibold text-lg text-left">{schedule.title}</div>
+                        <Tooltip
+                          title={
+                            status === "upcoming"
+                              ? `Bắt đầu sau ${dayjs(schedule.start).fromNow()}`
+                              : status === "ongoing"
+                              ? `Kết thúc ${dayjs(schedule.recurrenceEnd || schedule.end).fromNow()}`
+                              : undefined
+                          }
+                          placement="top"
+                        >
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${statusConfig.className}`}>
+                            {statusConfig.text}
+                          </span>
+                        </Tooltip>
+                      </div>
+                      <div className="text-gray-500 text-sm mb-1 text-left">{classData.name}</div>
+                      <div className="flex items-center space-x-3">
+                        <span className={`flex items-center ${statusConfig.iconColor}`}>
+                          <CalendarOutlined className="mr-1" />
+                          {dayjs(schedule.start).format(FORMAT_DATE)}
                         </span>
-                      </Tooltip>
-                    </div>
-                    <div className="text-gray-500 text-sm mb-1 text-left">{classData.name}</div>
-                    <div className="flex items-center space-x-3">
-                      <span className={`flex items-center ${statusConfig.iconColor}`}>
-                        <CalendarOutlined className="mr-1" />
-                        {dayjs(schedule.start).format(FORMAT_DATE)}
-                      </span>
-                      <span className={`flex items-center ${statusConfig.iconColor}`}>
-                        <ClockCircleOutlined className="mr-1" />
-                        {dayjs(schedule.start).format("HH:mm")} - {dayjs(schedule.end).format("HH:mm")}
-                      </span>
-                      <span>
-                        <span className="bg-gray-100 px-2 py-1 rounded text-xs font-medium text-gray-700">
-                          {formatRecurrenceInfo(schedule, recurringCounts[schedule.id] || 1)}
+                        <span className={`flex items-center ${statusConfig.iconColor}`}>
+                          <ClockCircleOutlined className="mr-1" />
+                          {dayjs(schedule.start).format("HH:mm")} - {dayjs(schedule.end).format("HH:mm")}
                         </span>
-                      </span>
+                        {formatRecurrenceInfo(schedule, recurringCounts[schedule.id] || 1) && (
+                          <span>
+                            <span className="bg-gray-100 px-2 py-1 rounded text-xs font-medium text-gray-700">
+                              {formatRecurrenceInfo(schedule, recurringCounts[schedule.id] || 1)}
+                            </span>
+                          </span>
+                        )}
+                      </div>
                     </div>
+                  </div>
+                  {/* Action buttons - only show on hover */}
+                  <div className="flex items-center space-x-2 ml-4 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    {userRole === "teacher" && classData.teacherId === userId && (
+                      <>
+                        <Button
+                          icon={<EditOutlined />}
+                          size="small"
+                          onClick={() => handleEditSchedule(schedule)}
+                          title="Chỉnh sửa lịch học"
+                        />
+                        <Button
+                          icon={<ScheduleOutlined className="text-lime-600" />}
+                          size="small"
+                          onClick={() => handleOpenCheckinModal(schedule)}
+                          title="Điểm danh"
+                          style={{ color: '#65a30d' }}
+                        />
+                        <Popconfirm
+                          title="Xóa lịch học này và tất cả buổi lặp lại?"
+                          description="Hành động này sẽ xóa cả các buổi lặp lại liên quan. Bạn có chắc chắn?"
+                          onConfirm={() => handleDeleteSchedule(schedule)}
+                          okText="Xóa"
+                          cancelText="Hủy"
+                          okType="danger"
+                        >
+                          <Button
+                            icon={<DeleteOutlined />}
+                            danger
+                            size="small"
+                            title="Xóa lịch học"
+                          />
+                        </Popconfirm>
+                      </>
+                    )}
+                    {/* Student and other roles: chỉ xem checkin */}
+                    {userRole !== "teacher" && (
+                      <Button
+                        icon={<ScheduleOutlined className="text-lime-600" />}
+                        size="small"
+                        onClick={() => handleOpenCheckinModal(schedule)}
+                        title="Xem điểm danh"
+                        style={{ color: '#65a30d' }}
+                      />
+                    )}
                   </div>
                 </div>
-                
-                {/* Action buttons - Only for teachers */}
-                {userRole === "teacher" && classData.teacherId === userId && (
-                  <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                    <Button
-                      icon={<EditOutlined />}
-                      size="small"
-                      onClick={() => handleEditSchedule(schedule)}
-                      title="Chỉnh sửa lịch học"
-                    />
-                    <Button
-                      icon={<ScheduleOutlined />}
-                      size="small"
-                      onClick={() => handleOpenCheckinModal(schedule)}
-                      title="Điểm danh"
-                    />
-                    <Popconfirm
-                      title="Xóa lịch học này và tất cả buổi lặp lại?"
-                      description="Hành động này sẽ xóa cả các buổi lặp lại liên quan. Bạn có chắc chắn?"
-                      onConfirm={() => handleDeleteSchedule(schedule)}
-                      okText="Xóa"
-                      cancelText="Hủy"
-                      okType="danger"
-                    >
-                      <Button
-                        icon={<DeleteOutlined />}
-                        danger
-                        size="small"
-                        title="Xóa lịch học"
-                      />
-                    </Popconfirm>
-                  </div>
-                )}
               </div>
             );
           })}
@@ -394,6 +430,7 @@ function ScheduleTab({ classId, userRole, userId, classData, onShowMessage }: Sc
           schedule={checkinSchedule}
           classId={classId}
           classData={classData}
+          userRole={userRole}
         />
       )}
     </div>
