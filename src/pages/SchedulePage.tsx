@@ -280,177 +280,178 @@ function SchedulePage() {
   };
 
   return (
-    <div className="space-y-6 p-4">
-      <h2 className="text-2xl font-bold text-center text-blue-500">Lịch học</h2>
-      {error && (
-        <Alert
-          type="error"
-          message={error}
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-      )}
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 dark:from-slate-900 dark:to-slate-800 py-4 px-2 sm:px-4 md:px-8 lg:px-16 xl:px-32">
+      <div className="max-w-[1600px] mx-auto">
+        <h2 className="text-3xl md:text-4xl font-extrabold text-center text-blue-600 dark:text-blue-300 mb-4 tracking-tight drop-shadow-lg">
+          Lịch học
+        </h2>
+        {error && (
+          <Alert
+            type="error"
+            message={error}
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        )}
 
-      <div className="bg-white rounded-lg shadow p-4">
-        {/* Add button */}
-        <div className="mb-4 flex justify-end">
-          {userRole === "teacher" && (
-            <Button type="primary" onClick={() => handleOpenModal()}>
-              Thêm lịch mới
-            </Button>
-          )}
-        </div>
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-2 sm:p-4 md:p-6 lg:p-8 transition-all duration-300">
+          {/* Add button */}
+          <div className="mb-4 flex flex-col sm:flex-row gap-2 sm:gap-0 justify-between items-center">
+            <div className="flex-1"></div>
+            {userRole === "teacher" && (
+              <Button
+                type="primary"
+                onClick={() => handleOpenModal()}
+                className="!bg-gradient-to-r !from-blue-500 !to-cyan-400 !border-none !shadow-lg !rounded-full !px-6 !py-2 !text-base !font-semibold hover:!from-blue-600 hover:!to-cyan-500 transition-all duration-200"
+                size="large"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><path stroke="#fff" strokeWidth="2" d="M12 5v14m7-7H5" strokeLinecap="round"/></svg>
+                  Thêm lịch mới
+                </span>
+              </Button>
+            )}
+          </div>
 
-        <Calendar
-          localizer={localizer}
-          events={events}
-          startAccessor="start"
-          endAccessor="end"
-          style={{ height: 600 }}
-          views={[Views.MONTH, Views.WEEK, Views.DAY, Views.AGENDA]}
-          view={currentView}
-          date={currentDate}
-          onView={(view) => setCurrentView(view)}
-          onNavigate={(date) => setCurrentDate(date)}
-          selectable={userRole === "teacher"}
-          onSelectSlot={handleOpenModal}
-          onSelectEvent={handleOpenModal}
-          eventPropGetter={eventStyleGetter}
-          formats={{
-            timeGutterFormat: "HH:mm",
-            eventTimeRangeFormat: ({ start, end }) =>
-              `${moment(start).format(FORMAT_TIME_12H)} - ${moment(end).format(
-                FORMAT_TIME_12H
-              )}`,
-            dayFormat: (date: Date) => moment(date).format("DD/MM"),
-            weekdayFormat: vietnameseWeekdayFormat, // Sử dụng hàm tùy chỉnh để hiển thị ngày tiếng Việt
-            monthHeaderFormat: (date: Date) => moment(date).format("MMMM YYYY"),
-            dayHeaderFormat: (date: Date) => moment(date).format(FORMAT_DATE),
-            dayRangeHeaderFormat: ({ start, end }) =>
-              `${moment(start).format("DD/MM")} - ${moment(end).format(
-                FORMAT_DATE
-              )}`,
-            agendaDateFormat: (date: Date) => moment(date).format(FORMAT_DATE),
-            agendaTimeFormat: (date: Date) =>
-              moment(date).format(FORMAT_TIME_12H),
-            agendaTimeRangeFormat: ({ start, end }) =>
-              `${moment(start).format(FORMAT_TIME_12H)} - ${moment(end).format(
-                FORMAT_TIME_12H
-              )}`,
-          }}
-          messages={{
-            next: "Tiếp theo",
-            previous: "Trước đó",
-            today: "Hôm nay",
-            month: "Tháng",
-            week: "Tuần",
-            day: "Ngày",
-            agenda: "Chương trình",
-            date: "Ngày",
-            time: "Thời gian",
-            event: "Sự kiện",
-            noEventsInRange: "Không có sự kiện nào trong khoảng thời gian này.",
-            showMore: (total: number) => `+ Xem thêm ${total} sự kiện`,
-          }}
-          popup={true}
-          step={30}
-          timeslots={2}
-          min={new Date(2025, 0, 1, 6, 0, 0)}
-          max={new Date(2025, 0, 1, 22, 0, 0)}
-          components={{
-            month: {
-              event: ({ event }) => (
-                <div className="rbc-event-content">
-                  <div className="flex items-center">
-                    {(event.eventType === "today" ||
-                      event.eventType === "coming") && (
-                      <div className="w-2 h-2 rounded-full bg-white mr-1 animate-pulse"></div>
-                    )}
-                    <strong className="text-xs">
-                      {moment(event.start).format(FORMAT_TIME_12H)}
-                    </strong>
-                  </div>
-                  <div className="text-xs mt-1 line-clamp-2">{event.title}</div>
-                  {event.eventType === "coming" && (
-                    <div className="text-xs mt-1 opacity-90">📅 Sắp tới</div>
-                  )}
-                </div>
-              ),
-            },
-            week: {
-              event: ({ event }) => (
-                <div className="rbc-event-content p-1">
-                  <div className="flex items-center">
-                    {(event.eventType === "today" ||
-                      event.eventType === "coming") && (
-                      <div className="w-2 h-2 rounded-full bg-white mr-1 animate-pulse"></div>
-                    )}
-                    <span className="text-xs font-medium">{event.title}</span>
-                    {event.eventType === "coming" && (
-                      <span className="ml-1 text-xs">📅</span>
-                    )}
-                  </div>
-                </div>
-              ),
-            },
-            day: {
-              event: ({ event }) => (
-                <div className="rbc-event-content p-2">
-                  <div className="flex items-center mb-1">
-                    {(event.eventType === "today" ||
-                      event.eventType === "coming") && (
-                      <div className="w-2 h-2 rounded-full bg-white mr-2 animate-pulse"></div>
-                    )}
-                    <span className="font-medium">{event.title}</span>
-                    {event.eventType === "coming" && (
-                      <span className="ml-2 text-sm">📅 Sắp tới</span>
-                    )}
-                  </div>
-                  {event.description && (
-                    <div className="text-xs opacity-90 mt-1">
-                      {event.description}
+          <div className="calendar-wrapper rounded-xl overflow-hidden border border-blue-100 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-md transition-all duration-300">
+            <Calendar
+              localizer={localizer}
+              events={events}
+              startAccessor="start"
+              endAccessor="end"
+              style={{ minHeight: 800, height: 640, width: '100%' }}
+              views={[Views.MONTH, Views.WEEK, Views.DAY, Views.AGENDA]}
+              view={currentView}
+              date={currentDate}
+              onView={(view) => setCurrentView(view)}
+              onNavigate={(date) => setCurrentDate(date)}
+              selectable={userRole === "teacher"}
+              onSelectSlot={handleOpenModal}
+              onSelectEvent={handleOpenModal}
+              eventPropGetter={eventStyleGetter}
+              formats={{
+                timeGutterFormat: "HH:mm",
+                eventTimeRangeFormat: ({ start, end }) =>
+                  `${moment(start).format(FORMAT_TIME_12H)} - ${moment(end).format(FORMAT_TIME_12H)}`,
+                dayFormat: (date: Date) => moment(date).format("DD/MM"),
+                weekdayFormat: vietnameseWeekdayFormat,
+                monthHeaderFormat: (date: Date) => moment(date).format("MMMM YYYY"),
+                dayHeaderFormat: (date: Date) => moment(date).format(FORMAT_DATE),
+                dayRangeHeaderFormat: ({ start, end }) =>
+                  `${moment(start).format("DD/MM")} - ${moment(end).format(FORMAT_DATE)}`,
+                agendaDateFormat: (date: Date) => moment(date).format(FORMAT_DATE),
+                agendaTimeFormat: (date: Date) => moment(date).format(FORMAT_TIME_12H),
+                agendaTimeRangeFormat: ({ start, end }) =>
+                  `${moment(start).format(FORMAT_TIME_12H)} - ${moment(end).format(FORMAT_TIME_12H)}`,
+              }}
+              messages={{
+                next: "Tiếp theo",
+                previous: "Trước đó",
+                today: "Hôm nay",
+                month: "Tháng",
+                week: "Tuần",
+                day: "Ngày",
+                agenda: "Chương trình",
+                date: "Ngày",
+                time: "Thời gian",
+                event: "Sự kiện",
+                noEventsInRange: "Không có sự kiện nào trong khoảng thời gian này.",
+                showMore: (total: number) => `+ Xem thêm ${total} sự kiện`,
+              }}
+              popup={true}
+              step={30}
+              timeslots={2}
+              min={new Date(2025, 0, 1, 6, 0, 0)}
+              max={new Date(2025, 0, 1, 22, 0, 0)}
+              components={{
+                month: {
+                  event: ({ event }) => (
+                    <div className="rbc-event-content flex flex-col gap-1">
+                      <div className="flex items-center gap-1">
+                        {(event.eventType === "today" || event.eventType === "coming") && (
+                          <div className="w-2 h-2 rounded-full bg-white mr-1 animate-pulse"></div>
+                        )}
+                        <strong className="text-xs text-blue-700 dark:text-blue-200">
+                          {moment(event.start).format(FORMAT_TIME_12H)}
+                        </strong>
+                      </div>
+                      <div className="text-xs mt-0.5 line-clamp-2 font-semibold text-gray-700 dark:text-gray-200">{event.title}</div>
+                      {event.eventType === "coming" && (
+                        <div className="text-xs mt-0.5 opacity-90 text-orange-500">📅 Sắp tới</div>
+                      )}
                     </div>
-                  )}
-                </div>
-              ),
-            },
-          }}
-        />
+                  ),
+                },
+                week: {
+                  event: ({ event }) => (
+                    <div className="rbc-event-content p-1 flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1">
+                        {(event.eventType === "today" || event.eventType === "coming") && (
+                          <div className="w-2 h-2 rounded-full bg-white mr-1 animate-pulse"></div>
+                        )}
+                        <span className="text-xs font-semibold text-blue-700 dark:text-blue-200">{event.title}</span>
+                        {event.eventType === "coming" && (
+                          <span className="ml-1 text-xs text-orange-500">📅</span>
+                        )}
+                      </div>
+                    </div>
+                  ),
+                },
+                day: {
+                  event: ({ event }) => (
+                    <div className="rbc-event-content p-2 flex flex-col gap-1">
+                      <div className="flex items-center mb-1 gap-2">
+                        {(event.eventType === "today" || event.eventType === "coming") && (
+                          <div className="w-2 h-2 rounded-full bg-white mr-2 animate-pulse"></div>
+                        )}
+                        <span className="font-semibold text-blue-700 dark:text-blue-200">{event.title}</span>
+                        {event.eventType === "coming" && (
+                          <span className="ml-2 text-sm text-orange-500">📅 Sắp tới</span>
+                        )}
+                      </div>
+                      {event.description && (
+                        <div className="text-xs opacity-90 mt-1 text-gray-600 dark:text-gray-300">
+                          {event.description}
+                        </div>
+                      )}
+                    </div>
+                  ),
+                },
+              }}
+            />
+          </div>
 
-        {/* Status-based colors */}
-        <div className="space-y-2 mt-4 flex items-center justify-center">
-          <div className="flex gap-6">
+          {/* Status-based colors */}
+          <div className="space-y-2 mt-4 flex flex-wrap items-center justify-center gap-4 md:gap-8">
             <div className="flex items-center">
-              <div className="w-4 h-4 rounded bg-green-500 mr-2 shadow-lg"></div>
-              <span className="text-sm text-gray-600 font-medium">Hôm nay</span>
+              <div className="w-4 h-4 rounded bg-green-500 mr-2 shadow-lg border border-green-700"></div>
+              <span className="text-sm text-gray-700 dark:text-gray-200 font-medium">Hôm nay</span>
             </div>
             <div className="flex items-center">
-              <div className="w-4 h-4 rounded bg-orange-400 mr-2 shadow-lg"></div>
-              <span className="text-sm text-gray-600 font-medium">
-                Lịch gần nhất
-              </span>
+              <div className="w-4 h-4 rounded bg-orange-400 mr-2 shadow-lg border border-orange-600"></div>
+              <span className="text-sm text-gray-700 dark:text-gray-200 font-medium">Lịch gần nhất</span>
             </div>
             <div className="flex items-center">
-              <div className="w-4 h-4 rounded bg-blue-500 mr-2"></div>
-              <span className="text-sm text-gray-600">Tương lai</span>
+              <div className="w-4 h-4 rounded bg-blue-500 mr-2 border border-blue-700"></div>
+              <span className="text-sm text-gray-700 dark:text-gray-200">Tương lai</span>
             </div>
             <div className="flex items-center">
-              <div className="w-4 h-4 rounded bg-gray-400 mr-2"></div>
-              <span className="text-sm text-gray-600">Đã qua</span>
+              <div className="w-4 h-4 rounded bg-gray-400 mr-2 border border-gray-600"></div>
+              <span className="text-sm text-gray-700 dark:text-gray-200">Đã qua</span>
             </div>
           </div>
         </div>
-      </div>
 
-      <ScheduleEventModal
-        open={showModal}
-        onClose={handleCloseModal}
-        mode={modalMode}
-        userRole={userRole}
-        userClasses={userClasses}
-        selectedEvent={selectedEvent}
-        onRefreshEvents={handleRefreshEvents}
-      />
+        <ScheduleEventModal
+          open={showModal}
+          onClose={handleCloseModal}
+          mode={modalMode}
+          userRole={userRole}
+          userClasses={userClasses}
+          selectedEvent={selectedEvent}
+          onRefreshEvents={handleRefreshEvents}
+        />
+      </div>
     </div>
   );
 }
