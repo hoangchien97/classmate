@@ -30,9 +30,10 @@ function Routes() {
       ),
       children: [
         { path: "classes", element: <ClassesPage /> },
-        { path: "classes/:classId", element: <ClassDetailPage /> }, // Add this route
+        { path: "classes/:classId", element: <ClassDetailPage /> },
         { path: "schedule", element: <SchedulePage /> },
         { path: "profile", element: <ProfilePage /> },
+        { index: true, element: <Navigate to="/classes" replace /> },
         { path: "/", element: <Navigate to="/classes" replace /> },
       ],
     },

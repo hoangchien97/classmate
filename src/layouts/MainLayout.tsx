@@ -10,7 +10,7 @@ import { fetchUser, clearUser } from "@/store/userSlice";
 import type { RootState, AppDispatch } from "@/store";
 import { toast } from "react-toastify";
 
-const { Header, Content, Footer } = Layout;
+const { Header, Content } = Layout;
 
 function MainLayout() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -67,6 +67,11 @@ function MainLayout() {
           <div
             className="text-white text-xl font-bold cursor-pointer flex items-center"
             onClick={() => navigate("/classes")}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') navigate('/classes');
+            }}
           >
             ClassMate
           </div>

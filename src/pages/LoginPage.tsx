@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/firebase/firebase";
-import { Form, Input, Button, Typography } from "antd";
+import { Form, Input, Button } from "antd";
 import { toast } from "react-toastify";
 
 

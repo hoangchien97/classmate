@@ -39,6 +39,9 @@ export default defineConfig({
       strategies: "injectManifest",
       srcDir: "src",
       filename: "service-worker.ts",
+      injectManifest: {
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+      },
     }),
   ],
   resolve: {

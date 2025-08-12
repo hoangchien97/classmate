@@ -5,7 +5,7 @@ import { createUserWithEmailAndPassword, fetchSignInMethodsForEmail, sendEmailVe
 import { doc, setDoc, query, collection, where, getDocs } from "firebase/firestore";
 import { parsePhoneNumber } from "libphonenumber-js";
 import { auth, db } from "@/firebase/firebase";
-import { Form, Input, Button, Select, Typography } from "antd";
+import { Form, Input, Button, Select } from "antd";
 import { toast } from "react-toastify";
 
 

@@ -1,9 +1,8 @@
 
 import { Outlet } from "react-router-dom";
-import { Layout, Typography } from "antd";
+import { Layout } from "antd";
 
 const { Content } = Layout;
-const { Title } = Typography;
 
 // You can replace this with your own student-friendly image URL
 const studentBg =
