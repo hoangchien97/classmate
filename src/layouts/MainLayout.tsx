@@ -10,7 +10,7 @@ import { fetchUser, clearUser } from "@/store/userSlice";
 import type { RootState, AppDispatch } from "@/store";
 import { toast } from "react-toastify";
 
-const { Header, Content } = Layout;
+const { Header, Content, Footer } = Layout;
 
 function MainLayout() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -61,11 +61,11 @@ function MainLayout() {
   };
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
-      <Header className="!bg-blue-600 !px-0">
-        <div className="container mx-auto flex justify-between items-center h-full">
+    <Layout className="layout-container" style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+      <Header className="header-container !bg-blue-600 !px-0 sticky top-0 z-50 w-full">
+        <div className="container mx-auto flex justify-between items-center h-full px-4 md:px-6 w-full">
           <div
-            className="text-white text-xl font-bold cursor-pointer"
+            className="text-white text-xl font-bold cursor-pointer flex items-center"
             onClick={() => navigate("/classes")}
           >
             ClassMate
@@ -102,8 +102,10 @@ function MainLayout() {
           />
         </div>
       </Header>
-      <Content className="container mx-auto p-4 w-full">
-        <Outlet />
+      <Content className="content-container flex-1 overflow-auto custom-scrollbar w-full">
+        <div className="container mx-auto p-4 md:p-6 w-full">
+          <Outlet />
+        </div>
       </Content>
 
       {/* Profile Modal */}
