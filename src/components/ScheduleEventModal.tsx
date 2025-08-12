@@ -40,7 +40,7 @@ export interface ScheduleFormData {
   startTime: string;
   endTime: string;
   description?: string;
-  classId: string;
+  classId: string | undefined;
   recurrence: RecurrenceType;
   recurrenceEnd?: string;
   weeklyDays: number[];
@@ -85,7 +85,7 @@ const ScheduleEventModal = ({
     startTime: dayjs().format(FORMAT_TIME),
     endTime: dayjs().add(1, "hour").format(FORMAT_TIME),
     description: "",
-    classId: "",
+    classId: undefined,
     recurrence: RecurrenceType.NONE,
     recurrenceEnd: "",
     weeklyDays: [],
@@ -101,7 +101,7 @@ const ScheduleEventModal = ({
         startTime: dayjs(selectedEvent.start).format(FORMAT_TIME),
         endTime: dayjs(selectedEvent.end).format(FORMAT_TIME),
         description: selectedEvent.description || "",
-        classId: selectedEvent.classId || "",
+        classId: selectedEvent.classId || undefined,
         recurrence: selectedEvent.recurrence || RecurrenceType.NONE,
         recurrenceEnd: selectedEvent.recurrenceEnd
           ? dayjs(selectedEvent.recurrenceEnd).format(FORMAT_DATE_INPUT)
@@ -117,9 +117,13 @@ const ScheduleEventModal = ({
   useEffect(() => {
     if (open) {
       const formData = initializeFormData();
+      // Auto select class if only one class is available
+      const autoClassId = (!formData.classId && userClasses && userClasses.length === 1)
+        ? userClasses[0].id
+        : formData.classId;
       form.setFieldsValue({
         title: formData.title,
-        classId: formData.classId,
+        classId: autoClassId,
         date: dayjs(formData.date, FORMAT_DATE_INPUT),
         startTime: dayjs(formData.startTime, FORMAT_TIME),
         endTime: dayjs(formData.endTime, FORMAT_TIME),
@@ -136,7 +140,7 @@ const ScheduleEventModal = ({
       form.resetFields();
       setError("");
     }
-  }, [open, mode, selectedEvent, form, initializeFormData]);
+  }, [open, mode, selectedEvent, form, initializeFormData, userClasses]);
 
   const dayOfWeekOptions = [
     { label: "Thứ 2", value: DayOfWeek.MONDAY },
